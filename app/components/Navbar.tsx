@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -14,6 +14,7 @@ export default function Navbar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState({
     name: '',
@@ -28,6 +29,7 @@ export default function Navbar() {
     type?: string;
     insuranceType?: string;
     message?: string;
+    title?: string;
     createdAt?: any;
     [key: string]: any;
   };
@@ -35,13 +37,14 @@ export default function Navbar() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // Ana sayfa kontrolü
+  const isHomePage = pathname === '/';
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
       if (authUser) {
-        // User is logged in
         setIsLoggedIn(true);
         
-        // Get user profile from Firestore
         try {
           const userDoc = await getDoc(doc(db, 'users', authUser.uid));
           if (userDoc.exists()) {
@@ -54,14 +57,12 @@ export default function Navbar() {
               role: userData.role || 'user'
             });
             
-            // Setup notifications listener
             setupNotificationsListener(authUser.uid);
           }
         } catch (error) {
           console.error("Error fetching user profile:", error);
         }
       } else {
-        // User is not logged in
         setIsLoggedIn(false);
         setUser({
           name: '',
@@ -98,7 +99,7 @@ export default function Navbar() {
         }
       });
       
-      setNotifications(notificationsData.slice(0, 10)); // Son 10 bildirim
+      setNotifications(notificationsData.slice(0, 10));
       setUnreadCount(unreadCounter);
     });
 
@@ -143,6 +144,18 @@ export default function Navbar() {
     return `${days} gün önce`;
   };
 
+  const handleNavClick = (section: string) => {
+    if (!isHomePage) {
+      router.push(`/#${section}`);
+    } else {
+      const element = document.getElementById(section);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+    setMobileMenuOpen(false);
+  };
+
   return (
     <nav className="fixed w-full top-0 z-50 bg-white shadow-lg">
       <div className="container mx-auto px-4">
@@ -159,18 +172,54 @@ export default function Navbar() {
           </div>
 
           <div className="hidden md:flex items-center space-x-8">
-            <a href="/" className="text-gray-700 hover:text-purple-600 transition">
+            <Link href="/" className="text-gray-700 hover:text-purple-600 transition">
               Anasayfa
-            </a>
-            <a href="#services" className="text-gray-700 hover:text-purple-600 transition">
-              Hizmetlerimiz
-            </a>
-            <a href="#about" className="text-gray-700 hover:text-purple-600 transition">
-              Hakkımızda
-            </a>
-            <a href="#contact" className="text-gray-700 hover:text-purple-600 transition">
-              İletişim
-            </a>
+            </Link>
+            
+            {/* Sadece ana sayfada değilse bu linkler görünür */}
+            {isHomePage ? (
+              <>
+                <button
+                  onClick={() => handleNavClick('services')}
+                  className="text-gray-700 hover:text-purple-600 transition"
+                >
+                  Hizmetlerimiz
+                </button>
+                <button
+                  onClick={() => handleNavClick('about')}
+                  className="text-gray-700 hover:text-purple-600 transition"
+                >
+                  Hakkımızda
+                </button>
+                <button
+                  onClick={() => handleNavClick('contact')}
+                  className="text-gray-700 hover:text-purple-600 transition"
+                >
+                  İletişim
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleNavClick('services')}
+                  className="text-gray-700 hover:text-purple-600 transition"
+                >
+                  Hizmetlerimiz
+                </button>
+                <button
+                  onClick={() => handleNavClick('about')}
+                  className="text-gray-700 hover:text-purple-600 transition"
+                >
+                  Hakkımızda
+                </button>
+                <button
+                  onClick={() => handleNavClick('contact')}
+                  className="text-gray-700 hover:text-purple-600 transition"
+                >
+                  İletişim
+                </button>
+              </>
+            )}
 
             {!isLoggedIn ? (
               <button
@@ -197,7 +246,6 @@ export default function Navbar() {
                     )}
                   </button>
 
-                  {/* Bildirim Dropdown */}
                   {notificationsOpen && (
                     <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border z-10">
                       <div className="p-4 border-b">
@@ -233,12 +281,10 @@ export default function Navbar() {
                                 <div className={`w-2 h-2 rounded-full mt-2 ${!notification.read ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
                                 <div className="flex-1">
                                   <p className="text-sm font-medium text-gray-800">
-                                    {notification.type === 'quote_response' ? 'Teklif Cevabı Geldi' : 
-                                     notification.type === 'quote_rejected' ? 'Teklif Reddedildi' :
-                                     notification.type === 'document_ready' ? 'Belgeleriniz Hazır' : 'Bildirim'}
+                                    {notification.title || 'Bildirim'}
                                   </p>
                                   <p className="text-xs text-gray-600 mt-1">
-                                    {notification.insuranceType} sigortası için güncelleme
+                                    {notification.message}
                                   </p>
                                   <p className="text-xs text-gray-400 mt-1">
                                     {formatNotificationTime(notification.createdAt)}
@@ -307,7 +353,6 @@ export default function Navbar() {
                         Tekliflerim
                       </Link>
                       
-                      {/* Admin Panel - Sadece admin rolüne sahip kullanıcılar için */}
                       {user.role === 'admin' && (
                         <Link 
                           href="/admin" 
@@ -353,15 +398,27 @@ export default function Navbar() {
       {mobileMenuOpen && (
         <div className="md:hidden bg-white border-t">
           <div className="px-4 py-4 space-y-3">
-            <a href="#services" className="block text-gray-700 hover:text-purple-600">
+            <Link href="/" className="block text-gray-700 hover:text-purple-600" onClick={() => setMobileMenuOpen(false)}>
+              Anasayfa
+            </Link>
+            <button
+              onClick={() => handleNavClick('services')}
+              className="block text-gray-700 hover:text-purple-600 w-full text-left"
+            >
               Hizmetlerimiz
-            </a>
-            <a href="#about" className="block text-gray-700 hover:text-purple-600">
+            </button>
+            <button
+              onClick={() => handleNavClick('about')}
+              className="block text-gray-700 hover:text-purple-600 w-full text-left"
+            >
               Hakkımızda
-            </a>
-            <a href="#contact" className="block text-gray-700 hover:text-purple-600">
+            </button>
+            <button
+              onClick={() => handleNavClick('contact')}
+              className="block text-gray-700 hover:text-purple-600 w-full text-left"
+            >
               İletişim
-            </a>
+            </button>
 
             {!isLoggedIn ? (
               <button
@@ -412,7 +469,6 @@ export default function Navbar() {
                   Tekliflerim
                 </Link>
                 
-                {/* Mobile Admin Panel Link */}
                 {user.role === 'admin' && (
                   <Link
                     href="/admin"

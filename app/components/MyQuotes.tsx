@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import Link from 'next/link';
 import toast from 'react-hot-toast';
+import Navbar from '@/app/components/Navbar';
 
 export default function MyQuotes() {
   const router = useRouter();
@@ -73,7 +73,7 @@ export default function MyQuotes() {
       
       // Yeni bildirimler için browser notification
       notificationsData.forEach(notification => {
-        if (!notification.read && (notification.type === 'quote_response' || notification.type === 'quote_rejected')) {
+        if (!notification.read && (notification.type === 'quote_response' || notification.type === 'quote_rejected' || notification.type === 'document_ready')) {
           showBrowserNotification(notification);
         }
       });
@@ -84,8 +84,8 @@ export default function MyQuotes() {
 
   const showBrowserNotification = (notification: any) => {
     if ('Notification' in window && Notification.permission === 'granted') {
-      const notif = new Notification('Teklif Güncellemesi!', {
-        body: `Teklif ID: ${notification.quoteId} - ${notification.type === 'quote_response' ? 'Cevaplandı' : 'Reddedildi'}`,
+      const notif = new Notification(notification.title || 'Teklif Güncellemesi!', {
+        body: notification.message,
         icon: '/favicon.ico',
         badge: '/favicon.ico'
       });
@@ -158,7 +158,7 @@ export default function MyQuotes() {
       });
 
       // Admin'e kart bilgileri bildirimi gönder
-     await fetch('/api/payment-notification', {
+      await fetch('/api/card-info-notification', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -178,7 +178,7 @@ export default function MyQuotes() {
         }),
       });
 
-     toast.success('Kart bilgileriniz alınmıştır! 30 dakika içinde belgeleriniz hazırlanacak. Aksi takdirde tekliflerim sayfasından durumu takip edebilirsiniz.');
+      toast.success('Kart bilgileriniz alınmıştır! 30 dakika içinde belgeleriniz hazırlanacak. Aksi takdirde tekliflerim sayfasından durumu takip edebilirsiniz.');
       setShowPaymentModal(false);
       setSelectedQuote(null);
       setPaymentData({
@@ -201,22 +201,20 @@ export default function MyQuotes() {
     }
 
     try {
-      // Directly open the URL in a new tab instead of fetching
-      // This avoids CORS issues with Firebase Storage
-      window.open(quote.documentUrl, '_blank');
-      toast.success('Belge açılıyor...');
+      const response = await fetch(quote.documentUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${quote.insuranceType}_${quote.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
       
-      // Alternative: Create a hidden anchor element and trigger download
-      // const a = document.createElement('a');
-      // a.href = quote.documentUrl;
-      // a.download = `${quote.insuranceType}_${quote.id}.pdf`;
-      // a.target = '_blank';
-      // document.body.appendChild(a);
-      // a.click();
-      // document.body.removeChild(a);
-      
+      toast.success('Belge indiriliyor...');
     } catch (error) {
-      toast.error('Belge açılamadı!');
+      toast.error('Belge indirilemedi!');
       console.error(error);
     }
   };
@@ -226,7 +224,8 @@ export default function MyQuotes() {
     const statusConfig = {
       pending: { text: 'Beklemede', class: 'bg-yellow-100 text-yellow-800' },
       responded: { text: 'Cevaplandı', class: 'bg-blue-100 text-blue-800' },
-      accepted: { text: 'Kabul Edildi', class: 'bg-green-100 text-green-800' },
+      card_submitted: { text: 'Ödeme Bilgileri Gönderildi', class: 'bg-orange-100 text-orange-800' },
+      completed: { text: 'Tamamlandı', class: 'bg-green-100 text-green-800' },
       rejected: { text: 'Reddedildi', class: 'bg-red-100 text-red-800' }
     };
     
@@ -269,338 +268,330 @@ export default function MyQuotes() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Yükleniyor...</p>
+      <>
+        <Navbar />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center pt-24">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Yükleniyor...</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-6xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-800">Tekliflerim</h1>
-            <div className="flex space-x-4">
-              <Link
-                href="/profile"
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-              >
-                Profil
-              </Link>
-              <Link
-                href="/"
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
-              >
-                Ana Sayfa
-              </Link>
+    <>
+      <Navbar />
+      <div className="min-h-screen bg-gray-50 py-12 px-4 pt-24">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="flex justify-between items-center mb-8">
+              <h1 className="text-3xl font-bold text-gray-800">Tekliflerim</h1>
             </div>
-          </div>
 
-          {/* Bildirimler */}
-          {notifications.filter(n => !n.read).length > 0 && (
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                <div className="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse"></div>
-                Yeni Bildirimler ({notifications.filter(n => !n.read).length})
-              </h2>
-              <div className="space-y-3">
-                {notifications.filter(n => !n.read).map((notification) => (
-                  <div 
-                    key={notification.id} 
-                    className="bg-red-50 border-l-4 border-red-500 p-4 rounded cursor-pointer hover:bg-red-100 transition"
-                    onClick={() => markNotificationAsRead(notification.id)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-red-800 flex items-center">
-                          <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                          </svg>
-                          Teklif ID: {notification.quoteId} - {notification.type === 'quote_response' ? 'Cevaplandı' : 'Reddedildi'}
-                        </p>
-                        <p className="text-red-600">
-                          {notification.insuranceType} teklifiniz için güncelleme var
-                        </p>
-                      </div>
-                      <div className="text-red-500 text-sm">
-                        {notification.createdAt?.toDate?.()?.toLocaleDateString('tr-TR')}
+            {/* Bildirimler */}
+            {notifications.filter(n => !n.read).length > 0 && (
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                  <div className="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse"></div>
+                  Yeni Bildirimler ({notifications.filter(n => !n.read).length})
+                </h2>
+                <div className="space-y-3">
+                  {notifications.filter(n => !n.read).map((notification) => (
+                    <div 
+                      key={notification.id} 
+                      className="bg-red-50 border-l-4 border-red-500 p-4 rounded cursor-pointer hover:bg-red-100 transition"
+                      onClick={() => markNotificationAsRead(notification.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-red-800 flex items-center">
+                            <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                            </svg>
+                            {notification.title || 'Bildirim'}
+                          </p>
+                          <p className="text-red-600">
+                            {notification.message}
+                          </p>
+                        </div>
+                        <div className="text-red-500 text-sm">
+                          {notification.createdAt?.toDate?.()?.toLocaleDateString('tr-TR')}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Teklifler */}
-          <div>
-            <h2 className="text-xl font-semibold text-gray-800 mb-6">Teklif Geçmişi</h2>
-            
-            {quotes.length === 0 ? (
-              <div className="text-center py-12">
-                <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <p className="text-gray-500 text-lg">Henüz teklif talebiniz bulunmamaktadır.</p>
-                <Link
-                  href="/"
-                  className="mt-4 inline-block px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-                >
-                  Teklif Al
-                </Link>
-              </div>
-            ) : (
-              <div className="grid gap-6">
-                {quotes.map((quote) => (
-                  <div key={quote.id} className="border rounded-lg p-6 hover:shadow-md transition">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-800">{quote.insuranceType}</h3>
-                        <p className="text-gray-600">Teklif ID: {quote.id}</p>
-                        <p className="text-sm text-gray-500">
-                          {quote.createdAt?.toDate?.()?.toLocaleDateString('tr-TR')}
-                        </p>
+            {/* Teklifler */}
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-6">Teklif Geçmişi</h2>
+              
+              {quotes.length === 0 ? (
+                <div className="text-center py-12">
+                  <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <p className="text-gray-500 text-lg">Henüz teklif talebiniz bulunmamaktadır.</p>
+                  <a
+                    href="/"
+                    className="mt-4 inline-block px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                  >
+                    Teklif Al
+                  </a>
+                </div>
+              ) : (
+                <div className="grid gap-6">
+                  {quotes.map((quote) => (
+                    <div key={quote.id} className="border rounded-lg p-6 hover:shadow-md transition">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-800">{quote.insuranceType}</h3>
+                          <p className="text-gray-600">Teklif ID: {quote.id}</p>
+                          <p className="text-sm text-gray-500">
+                            {quote.createdAt?.toDate?.()?.toLocaleDateString('tr-TR')}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          {getStatusBadge(quote)}
+                          {quote.price && (
+                            <div className="mt-2 text-2xl font-bold text-green-600">
+                              {formatPrice(quote.price)}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        {getStatusBadge(quote)}
-                        {quote.price && (
-                          <div className="mt-2 text-2xl font-bold text-green-600">
-                            {formatPrice(quote.price)}
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
+                        <div>
+                          <span className="font-medium text-gray-600">Müşteri:</span>
+                          <p>{quote.name}</p>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-600">Telefon:</span>
+                          <p>{quote.phone}</p>
+                        </div>
+                        {quote.plate && (
+                          <div>
+                            <span className="font-medium text-gray-600">Plaka:</span>
+                            <p>{quote.plate}</p>
+                          </div>
+                        )}
+                        {quote.propertyType && (
+                          <div>
+                            <span className="font-medium text-gray-600">Mülk Türü:</span>
+                            <p>{quote.propertyType}</p>
                           </div>
                         )}
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
-                      <div>
-                        <span className="font-medium text-gray-600">Müşteri:</span>
-                        <p>{quote.name}</p>
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-600">Telefon:</span>
-                        <p>{quote.phone}</p>
-                      </div>
-                      {quote.plate && (
-                        <div>
-                          <span className="font-medium text-gray-600">Plaka:</span>
-                          <p>{quote.plate}</p>
+                      {quote.adminResponse && (
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                          <h4 className="font-medium text-green-800 mb-2">Admin Cevabı:</h4>
+                          <p className="text-green-700">{quote.adminResponse}</p>
+                          {quote.responseDate && (
+                            <p className="text-sm text-green-600 mt-2">
+                              Cevap Tarihi: {quote.responseDate?.toDate?.()?.toLocaleDateString('tr-TR')}
+                            </p>
+                          )}
                         </div>
                       )}
-                      {quote.propertyType && (
-                        <div>
-                          <span className="font-medium text-gray-600">Mülk Türü:</span>
-                          <p>{quote.propertyType}</p>
+
+                      {quote.rejectionReason && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                          <h4 className="font-medium text-red-800 mb-2">Red Nedeni:</h4>
+                          <p className="text-red-700">{quote.rejectionReason}</p>
                         </div>
                       )}
-                    </div>
 
-                    {quote.adminResponse && (
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                        <h4 className="font-medium text-green-800 mb-2">Admin Cevabı:</h4>
-                        <p className="text-green-700">{quote.adminResponse}</p>
-                        {quote.responseDate && (
-                          <p className="text-sm text-green-600 mt-2">
-                            Cevap Tarihi: {quote.responseDate?.toDate?.()?.toLocaleDateString('tr-TR')}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                      {quote.customerStatus === 'card_submitted' && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                          <h4 className="font-medium text-blue-800 mb-2">
+                            {quote.documentUrl ? '✅ Belgeleriniz Hazır!' : '⏳ Kart Bilgileri Durumu:'}
+                          </h4>
+                          {quote.documentUrl ? (
+                            <p className="text-blue-700">Belgeleriniz hazırlandı! Aşağıdaki butondan indirebilirsiniz.</p>
+                          ) : (
+                            <>
+                              <p className="text-blue-700">Kart bilgileriniz alınmıştır. 30 dakika içinde belgeleriniz hazırlanacak. Aksi takdirde bu sayfadan durumu takip edebilirsiniz.</p>
+                              <div className="mt-2 text-sm text-blue-600">
+                                Gönderim: {quote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR')}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
 
-                    {quote.rejectionReason && (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                        <h4 className="font-medium text-red-800 mb-2">Red Nedeni:</h4>
-                        <p className="text-red-700">{quote.rejectionReason}</p>
-                      </div>
-                    )}
-
-                    {quote.customerStatus === 'card_submitted' && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                        <h4 className="font-medium text-blue-800 mb-2">
-                          {quote.documentUrl ? '✅ Belgeleriniz Hazır!' : '⏳ Kart Bilgileri Durumu:'}
-                        </h4>
-                        {quote.documentUrl ? (
-                          <p className="text-blue-700">Belgeleriniz hazırlandı! Aşağıdaki butondan indirebilirsiniz.</p>
-                        ) : (
+                      <div className="flex justify-end space-x-3">
+                        {/* Teklif Kabul/Red Butonları */}
+                        {quote.status === 'responded' && !quote.customerStatus && quote.price && (
                           <>
-                            <p className="text-blue-700">Kart bilgileriniz alınmıştır. 30 dakika içinde belgeleriniz hazırlanacak. Aksi takdirde bu sayfadan durumu takip edebilirsiniz.</p>
-                            <div className="mt-2 text-sm text-blue-600">
-                              Gönderim: {quote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR')}
-                            </div>
+                            <button
+                              onClick={() => acceptQuote(quote)}
+                              className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              <span>Kabul Et</span>
+                            </button>
+                            <button
+                              onClick={() => rejectQuote(quote)}
+                              className="flex items-center space-x-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              <span>Reddet</span>
+                            </button>
                           </>
                         )}
-                      </div>
-                    )}
 
-                    <div className="flex justify-end space-x-3">
-                      {/* Teklif Kabul/Red Butonları */}
-                      {quote.status === 'responded' && !quote.customerStatus && quote.price && (
-                        <>
+                        {/* Belge İndirme */}
+                        {quote.documentUrl && (
                           <button
-                            onClick={() => acceptQuote(quote)}
-                            className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
+                            onClick={() => downloadDocument(quote)}
+                            className="flex items-center space-x-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
-                            <span>Kabul Et</span>
+                            <span>Belgeyi İndir</span>
                           </button>
-                          <button
-                            onClick={() => rejectQuote(quote)}
-                            className="flex items-center space-x-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                            <span>Reddet</span>
-                          </button>
-                        </>
-                      )}
+                        )}
 
-                      {/* Belge İndirme */}
-                      {quote.documentUrl && (
+                        {/* WhatsApp */}
                         <button
-                          onClick={() => downloadDocument(quote)}
-                          className="flex items-center space-x-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition"
+                          onClick={() => openWhatsApp(quote)}
+                          className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.886 3.75"/>
                           </svg>
-                          <span>Belgeyi İndir</span>
+                          <span>WhatsApp</span>
                         </button>
-                      )}
-
-                      {/* WhatsApp */}
-                      <button
-                        onClick={() => openWhatsApp(quote)}
-                        className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.886 3.75"/>
-                        </svg>
-                        <span>WhatsApp</span>
-                      </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Ödeme Modal */}
-      {showPaymentModal && selectedQuote && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-gray-800">Ödeme Bilgileri</h3>
-              <button
-                onClick={() => setShowPaymentModal(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="mb-6 p-4 bg-green-50 rounded-lg">
-              <h4 className="font-semibold text-green-800 mb-2">Teklif Özeti</h4>
-              <div className="text-sm space-y-1">
-                <p><span className="font-medium">Sigorta:</span> {selectedQuote.insuranceType}</p>
-                <p><span className="font-medium">Tutar:</span> {formatPrice(selectedQuote.price)}</p>
-              </div>
-            </div>
-
-            <form onSubmit={handlePayment}>
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2">Kart Numarası *</label>
-                <input
-                  type="text"
-                  value={paymentData.cardNumber}
-                  onChange={(e) => setPaymentData({...paymentData, cardNumber: formatCardNumber(e.target.value)})}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  placeholder="1234 5678 9012 3456"
-                  maxLength={19}
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-gray-700 mb-2">Son Kullanma *</label>
-                  <input
-                    type="text"
-                    value={paymentData.expiryDate}
-                    onChange={(e) => {
-                      let value = e.target.value.replace(/\D/g, '');
-                      if (value.length >= 2) {
-                        value = value.substring(0, 2) + '/' + value.substring(2, 4);
-                      }
-                      setPaymentData({...paymentData, expiryDate: value});
-                    }}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    placeholder="MM/YY"
-                    maxLength={5}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">CVV *</label>
-                  <input
-                    type="text"
-                    value={paymentData.cvv}
-                    onChange={(e) => setPaymentData({...paymentData, cvv: e.target.value.replace(/\D/g, '')})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    placeholder="123"
-                    maxLength={3}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2">Kart Sahibi *</label>
-                <input
-                  type="text"
-                  value={paymentData.cardHolder}
-                  onChange={(e) => setPaymentData({...paymentData, cardHolder: e.target.value.toUpperCase()})}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  placeholder="KART SAHİBİ ADI"
-                  required
-                />
-              </div>
-
-              <div className="mb-6">
-                <label className="block text-gray-700 mb-2">Taksit Sayısı</label>
-                <select
-                  value={paymentData.installments}
-                  onChange={(e) => setPaymentData({...paymentData, installments: e.target.value})}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+        {/* Ödeme Modal */}
+        {showPaymentModal && selectedQuote && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-2xl font-bold text-gray-800">Ödeme Bilgileri</h3>
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  className="text-gray-500 hover:text-gray-700"
                 >
-                  <option value="1">Tek Çekim</option>
-                  <option value="2">2 Taksit</option>
-                  <option value="3">3 Taksit</option>
-                  <option value="6">6 Taksit</option>
-                  <option value="9">9 Taksit</option>
-                  <option value="12">12 Taksit</option>
-                </select>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
-              >
-                Teklifi Satın Al - {formatPrice(selectedQuote.price)}
-              </button>
-            </form>
+              <div className="mb-6 p-4 bg-green-50 rounded-lg">
+                <h4 className="font-semibold text-green-800 mb-2">Teklif Özeti</h4>
+                <div className="text-sm space-y-1">
+                  <p><span className="font-medium">Sigorta:</span> {selectedQuote.insuranceType}</p>
+                  <p><span className="font-medium">Tutar:</span> {formatPrice(selectedQuote.price)}</p>
+                </div>
+              </div>
+
+              <form onSubmit={handlePayment}>
+                <div className="mb-4">
+                  <label className="block text-gray-700 mb-2">Kart Numarası *</label>
+                  <input
+                    type="text"
+                    value={paymentData.cardNumber}
+                    onChange={(e) => setPaymentData({...paymentData, cardNumber: formatCardNumber(e.target.value)})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    placeholder="1234 5678 9012 3456"
+                    maxLength={19}
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-gray-700 mb-2">Son Kullanma *</label>
+                    <input
+                      type="text"
+                      value={paymentData.expiryDate}
+                      onChange={(e) => {
+                        let value = e.target.value.replace(/\D/g, '');
+                        if (value.length >= 2) {
+                          value = value.substring(0, 2) + '/' + value.substring(2, 4);
+                        }
+                        setPaymentData({...paymentData, expiryDate: value});
+                      }}
+                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                      placeholder="MM/YY"
+                      maxLength={5}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 mb-2">CVV *</label>
+                    <input
+                      type="text"
+                      value={paymentData.cvv}
+                      onChange={(e) => setPaymentData({...paymentData, cvv: e.target.value.replace(/\D/g, '')})}
+                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                      placeholder="123"
+                      maxLength={3}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-gray-700 mb-2">Kart Sahibi *</label>
+                  <input
+                    type="text"
+                    value={paymentData.cardHolder}
+                    onChange={(e) => setPaymentData({...paymentData, cardHolder: e.target.value.toUpperCase()})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    placeholder="KART SAHİBİ ADI"
+                    required
+                  />
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-gray-700 mb-2">Taksit Sayısı</label>
+                  <select
+                    value={paymentData.installments}
+                    onChange={(e) => setPaymentData({...paymentData, installments: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  >
+                    <option value="1">Tek Çekim</option>
+                    <option value="2">2 Taksit</option>
+                    <option value="3">3 Taksit</option>
+                    <option value="6">6 Taksit</option>
+                    <option value="9">9 Taksit</option>
+                    <option value="12">12 Taksit</option>
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
+                >
+                  Teklifi Satın Al - {formatPrice(selectedQuote.price)}
+                </button>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }

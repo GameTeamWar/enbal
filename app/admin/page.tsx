@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, getDocs, doc, getDoc, deleteDoc, updateDoc, onSnapshot, orderBy, addDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, getDoc, deleteDoc, updateDoc, onSnapshot, orderBy, addDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db, storage } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -19,7 +20,7 @@ export default function Admin() {
   const [showResponseModal, setShowResponseModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
-  const [showQuoteDetailModal, setShowQuoteDetailModal] = useState(false);
+  const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [responseData, setResponseData] = useState({
     adminResponse: '',
@@ -30,6 +31,7 @@ export default function Admin() {
     name: '',
     surname: '',
     phone: '',
+    password: '',
     tcno: '',
     birthdate: '',
     address: '',
@@ -47,9 +49,8 @@ export default function Admin() {
   const [newQuotesCount, setNewQuotesCount] = useState(0);
   const [paidQuotesCount, setPaidQuotesCount] = useState(0);
   const [showCardDetails, setShowCardDetails] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
 
-  const notificationSound = typeof Audio !== 'undefined' ? new Audio('/nsound.mp3') : null;
+  const notificationSound = typeof Audio !== 'undefined' ? new Audio('/notification-sound.mp3') : null;
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -96,6 +97,15 @@ export default function Admin() {
         }
       });
       
+      // Yeni teklif kontrolü ve sesli bildirim
+      if (quotes.length > 0 && quotesData.length > quotes.length) {
+        const newQuote = quotesData[0];
+        if (newQuote.status === 'pending' && audioEnabled && notificationSound) {
+          playNotificationSound();
+          showBrowserNotification(newQuote);
+        }
+      }
+      
       setQuotes(quotesData);
       setNewQuotesCount(pendingCount);
       setPaidQuotesCount(paidCount);
@@ -103,6 +113,28 @@ export default function Admin() {
 
     return unsubscribe;
   };
+
+  const playNotificationSound = () => {
+    if (notificationSound) {
+      notificationSound.play().catch(e => console.log('Ses çalınamadı:', e));
+    }
+  };
+
+  const showBrowserNotification = (quote: any) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('Yeni Teklif Talebi!', {
+        body: `${quote.insuranceType} - ${quote.name}`,
+        icon: '/favicon.ico',
+        badge: '/favicon.ico'
+      });
+    }
+  };
+
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   const fetchUsers = async () => {
     const q = query(collection(db, 'users'));
@@ -120,86 +152,6 @@ export default function Admin() {
       toast.success('Kullanıcı silindi!');
       fetchUsers();
     }
-  };
-
-  const handleUserEdit = (user: any) => {
-    setSelectedUser(user);
-    setUserFormData({
-      name: user.name || '',
-      surname: user.surname || '',
-      phone: user.phone || '',
-      tcno: user.tcno || '',
-      birthdate: user.birthdate || '',
-      address: user.address || '',
-      plate: user.plate || '',
-      registration: user.registration || '',
-      propertyType: user.propertyType || '',
-      propertyAddress: user.propertyAddress || '',
-      role: user.role || 'user'
-    });
-    setIsEditMode(true);
-    setShowUserModal(true);
-  };
-
-  const handleUserAdd = () => {
-    setSelectedUser(null);
-    setUserFormData({
-      name: '',
-      surname: '',
-      phone: '',
-      tcno: '',
-      birthdate: '',
-      address: '',
-      plate: '',
-      registration: '',
-      propertyType: '',
-      propertyAddress: '',
-      role: 'user'
-    });
-    setIsEditMode(false);
-    setShowUserModal(true);
-  };
-
-  const saveUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      if (isEditMode && selectedUser) {
-        // Kullanıcı güncelleme
-        await updateDoc(doc(db, 'users', selectedUser.id), userFormData);
-        toast.success('Kullanıcı güncellendi!');
-      } else {
-        // Yeni kullanıcı ekleme
-        if (!userFormData.phone) {
-          toast.error('Telefon numarası gerekli!');
-          return;
-        }
-        
-        // Firebase Auth'ta kullanıcı oluşturma (telefon ile email formatı)
-        const email = `${userFormData.phone}@enbalsigorta.com`;
-        const defaultPassword = '123456'; // Varsayılan şifre
-        
-        // Firestore'a kullanıcı kaydetme
-        await addDoc(collection(db, 'users'), {
-          ...userFormData,
-          createdAt: new Date(),
-          notifications: true
-        });
-        
-        toast.success('Kullanıcı eklendi! Varsayılan şifre: 123456');
-      }
-      
-      setShowUserModal(false);
-      fetchUsers();
-    } catch (error) {
-      toast.error('İşlem başarısız!');
-      console.error(error);
-    }
-  };
-
-  const handleQuoteDetail = (quote: any) => {
-    setSelectedQuote(quote);
-    setShowQuoteDetailModal(true);
   };
 
   const handleQuoteResponse = (quote: any) => {
@@ -223,6 +175,103 @@ export default function Admin() {
     setShowCardDetails(false);
   };
 
+  const handleAddUser = () => {
+    setUserFormData({
+      name: '',
+      surname: '',
+      phone: '',
+      password: '',
+      tcno: '',
+      birthdate: '',
+      address: '',
+      plate: '',
+      registration: '',
+      propertyType: '',
+      propertyAddress: '',
+      role: 'user'
+    });
+    setShowUserModal(true);
+  };
+
+  const handleEditUser = (user: any) => {
+    setSelectedUser(user);
+    setUserFormData({
+      name: user.name || '',
+      surname: user.surname || '',
+      phone: user.phone || '',
+      password: '',
+      tcno: user.tcno || '',
+      birthdate: user.birthdate || '',
+      address: user.address || '',
+      plate: user.plate || '',
+      registration: user.registration || '',
+      propertyType: user.propertyType || '',
+      propertyAddress: user.propertyAddress || '',
+      role: user.role || 'user'
+    });
+    setShowEditUserModal(true);
+  };
+
+  const createUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      const email = `${userFormData.phone}@enbalsigorta.com`;
+      const userCredential = await createUserWithEmailAndPassword(auth, email, userFormData.password);
+      
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
+        name: userFormData.name,
+        surname: userFormData.surname,
+        phone: userFormData.phone,
+        tcno: userFormData.tcno,
+        birthdate: userFormData.birthdate,
+        address: userFormData.address,
+        plate: userFormData.plate,
+        registration: userFormData.registration,
+        propertyType: userFormData.propertyType,
+        propertyAddress: userFormData.propertyAddress,
+        role: userFormData.role,
+        createdAt: new Date(),
+        notifications: true
+      });
+      
+      toast.success('Kullanıcı başarıyla oluşturuldu!');
+      setShowUserModal(false);
+      fetchUsers();
+    } catch (error) {
+      toast.error('Kullanıcı oluşturulamadı!');
+      console.error(error);
+    }
+  };
+
+  const updateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      const updateData = {
+        name: userFormData.name,
+        surname: userFormData.surname,
+        tcno: userFormData.tcno,
+        birthdate: userFormData.birthdate,
+        address: userFormData.address,
+        plate: userFormData.plate,
+        registration: userFormData.registration,
+        propertyType: userFormData.propertyType,
+        propertyAddress: userFormData.propertyAddress,
+        role: userFormData.role
+      };
+
+      await updateDoc(doc(db, 'users', selectedUser.id), updateData);
+      
+      toast.success('Kullanıcı bilgileri güncellendi!');
+      setShowEditUserModal(false);
+      fetchUsers();
+    } catch (error) {
+      toast.error('Kullanıcı güncellenemedi!');
+      console.error(error);
+    }
+  };
+
   const sendQuoteResponse = async () => {
     if (!selectedQuote || !responseData.adminResponse) {
       toast.error('Lütfen açıklama giriniz!');
@@ -243,6 +292,13 @@ export default function Admin() {
         insuranceType: selectedQuote.insuranceType,
         message: responseData.adminResponse,
         price: responseData.price
+      });
+
+      // Web Push Notification gönder
+      await sendWebPushNotification(selectedQuote.userId, {
+        title: 'Teklif Cevabı Geldi!',
+        body: `${selectedQuote.insuranceType} teklifiniz cevaplandı`,
+        icon: '/favicon.ico'
       });
 
       toast.success('Teklif cevabı gönderildi!');
@@ -279,11 +335,19 @@ export default function Admin() {
         customerStatus: 'completed'
       });
 
+      // Kullanıcıya belge hazır bildirimi gönder
       await sendUserNotification(selectedQuote.userId, {
         type: 'document_ready',
         quoteId: selectedQuote.id,
         insuranceType: selectedQuote.insuranceType,
         message: 'Belgeleriniz hazır! İndirebilirsiniz.'
+      });
+
+      // Web Push Notification gönder
+      await sendWebPushNotification(selectedQuote.userId, {
+        title: 'Belgeleriniz Hazır!',
+        body: `${selectedQuote.insuranceType} belgeleriniz indirilebilir`,
+        icon: '/favicon.ico'
       });
 
       setUploadProgress(100);
@@ -317,6 +381,13 @@ export default function Admin() {
         reason: reason
       });
 
+      // Web Push Notification gönder
+      await sendWebPushNotification(quote.userId, {
+        title: 'Teklif Reddedildi',
+        body: `${quote.insuranceType} teklifiniz reddedildi`,
+        icon: '/favicon.ico'
+      });
+
       toast.success('Teklif reddedildi!');
     } catch (error) {
       toast.error('Bir hata oluştu!');
@@ -335,9 +406,6 @@ export default function Admin() {
         createdAt: new Date()
       });
 
-      // Web Push Notification gönder
-      await sendWebPushNotification(notificationData);
-
       await fetch('/api/user-notification', {
         method: 'POST',
         headers: {
@@ -353,23 +421,20 @@ export default function Admin() {
     }
   };
 
-  const sendWebPushNotification = async (data: any) => {
+  const sendWebPushNotification = async (userId: string, notificationData: any) => {
     try {
-      await fetch('/api/web-push', {
+      await fetch('/api/web-push-notification', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          title: data.type === 'quote_response' ? 'Teklif Cevabı Geldi!' : 
-                 data.type === 'quote_rejected' ? 'Teklif Reddedildi' :
-                 data.type === 'document_ready' ? 'Belgeleriniz Hazır!' : 'Bildirim',
-          body: `${data.insuranceType} sigortası için güncelleme`,
-          userId: data.userId
+          userId,
+          ...notificationData
         }),
       });
     } catch (error) {
-      console.error('Web push notification gönderilemedi:', error);
+      console.error('Web push bildirimi gönderilemedi:', error);
     }
   };
 
@@ -446,6 +511,20 @@ export default function Admin() {
             </div>
             
             <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setAudioEnabled(!audioEnabled)}
+                className={`p-2 rounded-lg ${audioEnabled ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'}`}
+                title={audioEnabled ? 'Sesli bildirimleri kapat' : 'Sesli bildirimleri aç'}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {audioEnabled ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9v6a3 3 0 11-6 0V9a3 3 0 116 0z" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                  )}
+                </svg>
+              </button>
+              
               <Link
                 href="/"
                 className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
@@ -521,17 +600,6 @@ export default function Admin() {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleQuoteDetail(quote)}
-                            className="text-blue-600 hover:text-blue-800 font-medium"
-                            title="Detayları Gör"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
-                          
                           {quote.status === 'pending' && (
                             <>
                               <button
@@ -567,6 +635,14 @@ export default function Admin() {
                           )}
                           
                           <button
+                            onClick={() => handleQuoteResponse(quote)}
+                            className="text-gray-600 hover:text-gray-800 font-medium"
+                            title="Detayları Görüntüle"
+                          >
+                            Detay
+                          </button>
+                          
+                          <button
                             onClick={() => {
                               window.open(`https://wa.me/90${quote.phone.replace(/\D/g, '')}`, '_blank');
                             }}
@@ -591,10 +667,10 @@ export default function Admin() {
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-semibold text-gray-800">Kullanıcı Yönetimi</h2>
                 <button
-                  onClick={handleUserAdd}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                  onClick={handleAddUser}
+                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:opacity-90 transition"
                 >
-                  + Kullanıcı Ekle
+                  Yeni Kullanıcı Ekle
                 </button>
               </div>
               
@@ -623,7 +699,7 @@ export default function Admin() {
                         <td className="py-3 px-4">
                           <div className="flex space-x-2">
                             <button
-                              onClick={() => handleUserEdit(user)}
+                              onClick={() => handleEditUser(user)}
                               className="text-blue-600 hover:text-blue-800"
                             >
                               Düzenle
@@ -646,14 +722,14 @@ export default function Admin() {
         </div>
       </div>
 
-      {/* Teklif Detay Modal */}
-      {showQuoteDetailModal && selectedQuote && (
+      {/* Teklif Detay/Cevaplama Modal */}
+      {showResponseModal && selectedQuote && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-2xl font-bold text-gray-800">Teklif Detayları</h3>
               <button
-                onClick={() => setShowQuoteDetailModal(false)}
+                onClick={() => setShowResponseModal(false)}
                 className="text-gray-500 hover:text-gray-700"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -662,108 +738,201 @@ export default function Admin() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Temel Bilgiler */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-semibold text-gray-700 mb-3">Temel Bilgiler</h4>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* Müşteri Bilgileri */}
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-semibold text-gray-700 mb-3">Müşteri Bilgileri</h4>
                 <div className="space-y-2 text-sm">
-                  <div><span className="font-medium">Teklif ID:</span> {selectedQuote.id}</div>
-                  <div><span className="font-medium">Müşteri:</span> {selectedQuote.name}</div>
-                  <div><span className="font-medium">Telefon:</span> {selectedQuote.phone}</div>
-                  <div><span className="font-medium">TC No:</span> {selectedQuote.tcno || '-'}</div>
-                  <div><span className="font-medium">Doğum Tarihi:</span> {selectedQuote.birthdate || '-'}</div>
-                  <div><span className="font-medium">Sigorta Türü:</span> {selectedQuote.insuranceType}</div>
-                  <div><span className="font-medium">Tarih:</span> {selectedQuote.createdAt?.toDate?.()?.toLocaleDateString('tr-TR')}</div>
-                  <div><span className="font-medium">Durum:</span> {getStatusBadge(selectedQuote)}</div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Ad Soyad:</span>
+                    <span>{selectedQuote.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Telefon:</span>
+                    <span>{selectedQuote.phone}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">TC No:</span>
+                    <span>{selectedQuote.tcno || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Doğum Tarihi:</span>
+                    <span>{selectedQuote.birthdate || '-'}</span>
+                  </div>
+                  {selectedQuote.address && (
+                    <div className="pt-2 border-t">
+                      <span className="font-medium">Adres:</span>
+                      <p className="text-gray-600 mt-1">{selectedQuote.address}</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Araç/Mülk Bilgileri */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-semibold text-gray-700 mb-3">
-                  {selectedQuote.plate || selectedQuote.registration ? 'Araç Bilgileri' : 'Mülk Bilgileri'}
-                </h4>
+              {/* Teklif Bilgileri */}
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <h4 className="font-semibold text-blue-800 mb-3">Teklif Bilgileri</h4>
                 <div className="space-y-2 text-sm">
-                  {selectedQuote.plate && <div><span className="font-medium">Plaka:</span> {selectedQuote.plate}</div>}
-                  {selectedQuote.registration && <div><span className="font-medium">Ruhsat:</span> {selectedQuote.registration}</div>}
-                  {selectedQuote.propertyType && <div><span className="font-medium">Mülk Türü:</span> {selectedQuote.propertyType}</div>}
-                  {selectedQuote.address && <div><span className="font-medium">Adres:</span> {selectedQuote.address}</div>}
+                  <div className="flex justify-between">
+                    <span className="font-medium">Sigorta Türü:</span>
+                    <span>{selectedQuote.insuranceType}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Teklif ID:</span>
+                    <span>{selectedQuote.id}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Tarih:</span>
+                    <span>{selectedQuote.createdAt?.toDate?.()?.toLocaleDateString('tr-TR')}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Durum:</span>
+                    <span>{getStatusBadge(selectedQuote)}</span>
+                  </div>
+                  {selectedQuote.plate && (
+                    <div className="flex justify-between">
+                      <span className="font-medium">Plaka:</span>
+                      <span>{selectedQuote.plate}</span>
+                    </div>
+                  )}
+                  {selectedQuote.registration && (
+                    <div className="flex justify-between">
+                      <span className="font-medium">Ruhsat:</span>
+                      <span>{selectedQuote.registration}</span>
+                    </div>
+                  )}
+                  {selectedQuote.propertyType && (
+                    <div className="flex justify-between">
+                      <span className="font-medium">Mülk Türü:</span>
+                      <span>{selectedQuote.propertyType}</span>
+                    </div>
+                  )}
                 </div>
               </div>
+            </div>
 
-              {/* Admin Cevabı */}
-              {selectedQuote.adminResponse && (
-                <div className="bg-green-50 rounded-lg p-4">
-                  <h4 className="font-semibold text-green-700 mb-3">Admin Cevabı</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><span className="font-medium">Açıklama:</span> {selectedQuote.adminResponse}</div>
-                    {selectedQuote.price && <div><span className="font-medium">Fiyat:</span> {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(selectedQuote.price))}</div>}
-                    {selectedQuote.adminNotes && <div><span className="font-medium">Admin Notları:</span> {selectedQuote.adminNotes}</div>}
-                    <div><span className="font-medium">Cevap Tarihi:</span> {selectedQuote.responseDate?.toDate?.()?.toLocaleDateString('tr-TR')}</div>
-                  </div>
-                </div>
-              )}
-
-              {/* Red Bilgisi */}
-              {selectedQuote.rejectionReason && (
-                <div className="bg-red-50 rounded-lg p-4">
-                  <h4 className="font-semibold text-red-700 mb-3">Red Bilgisi</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><span className="font-medium">Red Nedeni:</span> {selectedQuote.rejectionReason}</div>
-                    <div><span className="font-medium">Red Tarihi:</span> {selectedQuote.responseDate?.toDate?.()?.toLocaleDateString('tr-TR')}</div>
-                  </div>
-                </div>
-              )}
-
-              {/* Müşteri Red Bilgisi */}
-              {selectedQuote.customerStatus === 'rejected' && (
-                <div className="bg-orange-50 rounded-lg p-4">
-                  <h4 className="font-semibold text-orange-700 mb-3">Müşteri Red Bilgisi</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><span className="font-medium">Müşteri Red Nedeni:</span> {selectedQuote.customerRejectionReason || 'Belirtilmemiş'}</div>
-                    <div><span className="font-medium">Red Tarihi:</span> {selectedQuote.customerResponseDate?.toDate?.()?.toLocaleDateString('tr-TR')}</div>
-                  </div>
-                </div>
-              )}
-
-              {/* Ödeme Bilgisi */}
-              {selectedQuote.customerStatus === 'card_submitted' && (
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <h4 className="font-semibold text-blue-700 mb-3">Ödeme Bilgisi</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><span className="font-medium">Durum:</span> {selectedQuote.documentUrl ? 'Belge Yüklendi' : 'Kart Bilgileri Alındı'}</div>
-                    <div><span className="font-medium">Kart Sahibi:</span> {selectedQuote.paymentInfo?.cardHolder}</div>
-                    <div><span className="font-medium">Kart No:</span> **** **** **** {selectedQuote.paymentInfo?.originalCardNumber?.slice(-4)}</div>
-                    <div><span className="font-medium">Taksit:</span> {selectedQuote.paymentInfo?.installments === '1' ? 'Tek Çekim' : selectedQuote.paymentInfo?.installments + ' Taksit'}</div>
-                    <div><span className="font-medium">Ödeme Tarihi:</span> {selectedQuote.customerResponseDate?.toDate?.()?.toLocaleDateString('tr-TR')}</div>
-                    {selectedQuote.documentUrl && (
-                      <div><span className="font-medium">Belge:</span> <a href={selectedQuote.documentUrl} target="_blank" className="text-blue-600 hover:underline">İndir</a></div>
+            {/* Önceki Yanıtlar ve Notlar */}
+            {(selectedQuote.adminResponse || selectedQuote.rejectionReason || selectedQuote.customerRejectionReason) && (
+              <div className="mb-6 p-4 bg-yellow-50 rounded-lg">
+                <h4 className="font-semibold text-yellow-800 mb-3">Geçmiş İşlemler</h4>
+                
+                {selectedQuote.adminResponse && (
+                  <div className="mb-3 p-3 bg-green-100 rounded">
+                    <p className="font-medium text-green-800">Admin Cevabı:</p>
+                    <p className="text-green-700">{selectedQuote.adminResponse}</p>
+                    {selectedQuote.price && (
+                      <p className="text-green-600 font-medium mt-1">
+                        Fiyat: {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(selectedQuote.price))}
+                      </p>
+                    )}
+                    {selectedQuote.responseDate && (
+                      <p className="text-green-600 text-sm mt-1">
+                        Tarih: {selectedQuote.responseDate?.toDate?.()?.toLocaleString('tr-TR')}
+                      </p>
                     )}
                   </div>
-                </div>
-              )}
-            </div>
+                )}
 
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={() => setShowQuoteDetailModal(false)}
-                className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition"
-              >
-                Kapat
-              </button>
-            </div>
+                {selectedQuote.rejectionReason && (
+                  <div className="mb-3 p-3 bg-red-100 rounded">
+                    <p className="font-medium text-red-800">Admin Red Nedeni:</p>
+                    <p className="text-red-700">{selectedQuote.rejectionReason}</p>
+                  </div>
+                )}
+
+                {selectedQuote.customerRejectionReason && (
+                  <div className="mb-3 p-3 bg-gray-100 rounded">
+                    <p className="font-medium text-gray-800">Müşteri Red Nedeni:</p>
+                    <p className="text-gray-700">{selectedQuote.customerRejectionReason}</p>
+                  </div>
+                )}
+
+                {selectedQuote.adminNotes && (
+                  <div className="p-3 bg-purple-100 rounded">
+                    <p className="font-medium text-purple-800">Admin Notları:</p>
+                    <p className="text-purple-700">{selectedQuote.adminNotes}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Yeni Yanıt Formu - Sadece pending durumda göster */}
+            {selectedQuote.status === 'pending' && (
+              <form onSubmit={(e) => { e.preventDefault(); sendQuoteResponse(); }}>
+                <div className="mb-4">
+                  <label className="block text-gray-700 mb-2">Müşteri Açıklaması *</label>
+                  <textarea
+                    value={responseData.adminResponse}
+                    onChange={(e) => setResponseData({...responseData, adminResponse: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    rows={4}
+                    placeholder="Müşteriye gönderilecek açıklama..."
+                    required
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-gray-700 mb-2">Fiyat Bilgisi (₺)</label>
+                  <input
+                    type="number"
+                    value={responseData.price}
+                    onChange={(e) => setResponseData({...responseData, price: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    placeholder="Örn: 1500"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-gray-700 mb-2">Admin Notları (İç Kullanım)</label>
+                  <textarea
+                    value={responseData.adminNotes}
+                    onChange={(e) => setResponseData({...responseData, adminNotes: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    rows={3}
+                    placeholder="Sadece admin panelinde görünür notlar..."
+                  />
+                </div>
+
+                <div className="flex space-x-4">
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
+                  >
+                    Cevabı Gönder
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowResponseModal(false)}
+                    className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
+                  >
+                    Kapat
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Sadece görüntüleme için kapat butonu */}
+            {selectedQuote.status !== 'pending' && (
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowResponseModal(false)}
+                  className="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
+                >
+                  Kapat
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Kullanıcı Ekleme/Düzenleme Modal */}
+      {/* Kullanıcı Ekleme Modal */}
       {showUserModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-gray-800">
-                {isEditMode ? 'Kullanıcı Düzenle' : 'Yeni Kullanıcı Ekle'}
-              </h3>
+              <h3 className="text-2xl font-bold text-gray-800">Yeni Kullanıcı Ekle</h3>
               <button
                 onClick={() => setShowUserModal(false)}
                 className="text-gray-500 hover:text-gray-700"
@@ -774,7 +943,7 @@ export default function Admin() {
               </button>
             </div>
 
-            <form onSubmit={saveUser}>
+            <form onSubmit={createUser}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-gray-700 mb-2">İsim *</label>
@@ -786,7 +955,6 @@ export default function Admin() {
                     required
                   />
                 </div>
-
                 <div>
                   <label className="block text-gray-700 mb-2">Soyisim *</label>
                   <input
@@ -797,7 +965,6 @@ export default function Admin() {
                     required
                   />
                 </div>
-
                 <div>
                   <label className="block text-gray-700 mb-2">Telefon *</label>
                   <input
@@ -805,13 +972,22 @@ export default function Admin() {
                     value={userFormData.phone}
                     onChange={(e) => setUserFormData({...userFormData, phone: e.target.value})}
                     className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    disabled={isEditMode}
+                    placeholder="05XX XXX XX XX"
                     required
                   />
                 </div>
-
                 <div>
-                  <label className="block text-gray-700 mb-2">TC Kimlik No</label>
+                  <label className="block text-gray-700 mb-2">Şifre *</label>
+                  <input
+                    type="password"
+                    value={userFormData.password}
+                    onChange={(e) => setUserFormData({...userFormData, password: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 mb-2">TC No</label>
                   <input
                     type="text"
                     value={userFormData.tcno}
@@ -820,7 +996,6 @@ export default function Admin() {
                     maxLength={11}
                   />
                 </div>
-
                 <div>
                   <label className="block text-gray-700 mb-2">Doğum Tarihi</label>
                   <input
@@ -830,31 +1005,8 @@ export default function Admin() {
                     className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-gray-700 mb-2">Rol</label>
-                  <select
-                    value={userFormData.role}
-                    onChange={(e) => setUserFormData({...userFormData, role: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  >
-                    <option value="user">Kullanıcı</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-gray-700 mb-2">Adres</label>
-                  <textarea
-                    value={userFormData.address}
-                    onChange={(e) => setUserFormData({...userFormData, address: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    rows={3}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-gray-700 mb-2">Araç Plakası</label>
+                  <label className="block text-gray-700 mb-2">Plaka</label>
                   <input
                     type="text"
                     value={userFormData.plate}
@@ -862,7 +1014,6 @@ export default function Admin() {
                     className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
                   />
                 </div>
-
                 <div>
                   <label className="block text-gray-700 mb-2">Ruhsat Seri No</label>
                   <input
@@ -872,7 +1023,6 @@ export default function Admin() {
                     className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
                   />
                 </div>
-
                 <div>
                   <label className="block text-gray-700 mb-2">Mülk Türü</label>
                   <select
@@ -885,8 +1035,27 @@ export default function Admin() {
                     <option value="İşyeri">İşyeri</option>
                   </select>
                 </div>
-
                 <div>
+                  <label className="block text-gray-700 mb-2">Rol</label>
+                  <select
+                    value={userFormData.role}
+                    onChange={(e) => setUserFormData({...userFormData, role: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  >
+                    <option value="user">Kullanıcı</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-gray-700 mb-2">Adres</label>
+                  <textarea
+                    value={userFormData.address}
+                    onChange={(e) => setUserFormData({...userFormData, address: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    rows={3}
+                  />
+                </div>
+                <div className="md:col-span-2">
                   <label className="block text-gray-700 mb-2">Mülk Adresi</label>
                   <textarea
                     value={userFormData.propertyAddress}
@@ -897,12 +1066,12 @@ export default function Admin() {
                 </div>
               </div>
 
-              <div className="mt-6 flex space-x-4">
+              <div className="flex space-x-4 mt-6">
                 <button
                   type="submit"
                   className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
                 >
-                  {isEditMode ? 'Güncelle' : 'Kullanıcı Ekle'}
+                  Kullanıcı Oluştur
                 </button>
                 <button
                   type="button"
@@ -917,8 +1086,350 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Diğer modaller buraya eklenecek... */}
-      {/* Teklif Cevaplama, Kart Bilgileri, Belge Yükleme modalleri */}
+      {/* Kullanıcı Düzenleme Modal */}
+      {showEditUserModal && selectedUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-gray-800">Kullanıcı Düzenle</h3>
+              <button
+                onClick={() => setShowEditUserModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={updateUser}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-700 mb-2">İsim *</label>
+                  <input
+                    type="text"
+                    value={userFormData.name}
+                    onChange={(e) => setUserFormData({...userFormData, name: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 mb-2">Soyisim *</label>
+                  <input
+                    type="text"
+                    value={userFormData.surname}
+                    onChange={(e) => setUserFormData({...userFormData, surname: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 mb-2">Telefon</label>
+                  <input
+                    type="tel"
+                    value={selectedUser.phone}
+                    disabled
+                    className="w-full px-4 py-3 border rounded-lg bg-gray-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 mb-2">TC No</label>
+                  <input
+                    type="text"
+                    value={userFormData.tcno}
+                    onChange={(e) => setUserFormData({...userFormData, tcno: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    maxLength={11}
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 mb-2">Doğum Tarihi</label>
+                  <input
+                    type="date"
+                    value={userFormData.birthdate}
+                    onChange={(e) => setUserFormData({...userFormData, birthdate: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 mb-2">Plaka</label>
+                  <input
+                    type="text"
+                    value={userFormData.plate}
+                    onChange={(e) => setUserFormData({...userFormData, plate: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 mb-2">Ruhsat Seri No</label>
+                  <input
+                    type="text"
+                    value={userFormData.registration}
+                    onChange={(e) => setUserFormData({...userFormData, registration: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 mb-2">Mülk Türü</label>
+                  <select
+                    value={userFormData.propertyType}
+                    onChange={(e) => setUserFormData({...userFormData, propertyType: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  >
+                    <option value="">Seçiniz</option>
+                    <option value="Ev">Ev</option>
+                    <option value="İşyeri">İşyeri</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-gray-700 mb-2">Rol</label>
+                  <select
+                    value={userFormData.role}
+                    onChange={(e) => setUserFormData({...userFormData, role: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  >
+                    <option value="user">Kullanıcı</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-gray-700 mb-2">Adres</label>
+                  <textarea
+                    value={userFormData.address}
+                    onChange={(e) => setUserFormData({...userFormData, address: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    rows={3}
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-gray-700 mb-2">Mülk Adresi</label>
+                  <textarea
+                    value={userFormData.propertyAddress}
+                    onChange={(e) => setUserFormData({...userFormData, propertyAddress: e.target.value})}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    rows={2}
+                  />
+                </div>
+              </div>
+
+              <div className="flex space-x-4 mt-6">
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
+                >
+                  Güncelle
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEditUserModal(false)}
+                  className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
+                >
+                  İptal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Kart Bilgileri Modal */}
+      {showCardInfoModal && selectedCardQuote && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-gray-800">💳 Kart Bilgileri</h3>
+              <button
+                onClick={() => setShowCardInfoModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+              <h4 className="font-semibold text-blue-800 mb-2">Teklif Bilgileri</h4>
+              <div className="text-sm space-y-1">
+                <p><span className="font-medium">Müşteri:</span> {selectedCardQuote.name}</p>
+                <p><span className="font-medium">Telefon:</span> {selectedCardQuote.phone}</p>
+                <p><span className="font-medium">TC No:</span> {selectedCardQuote.tcno}</p>
+                <p><span className="font-medium">Sigorta:</span> {selectedCardQuote.insuranceType}</p>
+                <p><span className="font-medium">Teklif ID:</span> {selectedCardQuote.id}</p>
+                {selectedCardQuote.price && (
+                  <p><span className="font-medium">Tutar:</span> {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(selectedCardQuote.price))}</p>
+                )}
+              </div>
+            </div>
+
+            {selectedCardQuote.paymentInfo && (
+              <div className="mb-6 p-4 bg-green-50 rounded-lg border">
+                <h4 className="font-semibold text-green-800 mb-3">💳 Kart Bilgileri</h4>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-gray-600">Kart Numarası:</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-mono text-gray-800">
+                        {showCardDetails ? selectedCardQuote.paymentInfo.originalCardNumber || selectedCardQuote.paymentInfo.cardNumber : '****-****-****-' + (selectedCardQuote.paymentInfo.originalCardNumber || selectedCardQuote.paymentInfo.cardNumber).slice(-4)}
+                      </span>
+                      {!selectedCardQuote.documentUrl && (
+                        <button
+                          onClick={() => setShowCardDetails(!showCardDetails)}
+                          className="text-blue-600 hover:text-blue-700 text-xs px-2 py-1 border border-blue-300 rounded"
+                        >
+                          {showCardDetails ? 'Gizle' : 'Göster'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium text-gray-600">Kart Sahibi:</span>
+                    <span className="text-gray-800">{selectedCardQuote.paymentInfo.cardHolder}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-gray-600">Son Kullanma:</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-mono text-gray-800">
+                        {showCardDetails ? selectedCardQuote.paymentInfo.expiryDate : '**/**'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-gray-600">CVV:</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-mono text-gray-800">
+                        {showCardDetails ? selectedCardQuote.paymentInfo.originalCvv || selectedCardQuote.paymentInfo.cvv : '***'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium text-gray-600">Taksit:</span>
+                    <span className="text-gray-800">
+                      {selectedCardQuote.paymentInfo.installments === '1' ? 'Tek Çekim' : selectedCardQuote.paymentInfo.installments + ' Taksit'}
+                    </span>
+                  </div>
+                  <div className="pt-2 border-t">
+                    <span className="font-medium text-gray-600">Gönderim Tarihi:</span>
+                    <span className="text-gray-800 ml-2">
+                      {selectedCardQuote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start">
+                <svg className="w-5 h-5 text-yellow-600 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  <p className="text-yellow-800 font-medium">Bu bilgilerle ödemeyi yapın</p>
+                  <p className="text-yellow-700 text-sm mt-1">Ödeme yaptıktan sonra belgeleri sisteme yükleyin. Müşteri 30 dakika bekleme süresinde.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex space-x-4">
+              <button
+                onClick={() => {
+                  setShowCardInfoModal(false);
+                  handleDocumentUpload(selectedCardQuote);
+                }}
+                className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
+              >
+                Ödeme Yaptım, Belge Yükle
+              </button>
+              <button
+                onClick={() => setShowCardInfoModal(false)}
+                className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Belge Yükleme Modal */}
+      {showUploadModal && selectedQuote && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-gray-800">Belge Yükle</h3>
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+              <h4 className="font-semibold text-blue-800 mb-2">Teklif Bilgileri</h4>
+              <div className="text-sm space-y-1">
+                <p><span className="font-medium">Müşteri:</span> {selectedQuote.name}</p>
+                <p><span className="font-medium">Sigorta:</span> {selectedQuote.insuranceType}</p>
+                <p><span className="font-medium">Teklif ID:</span> {selectedQuote.id}</p>
+                {selectedQuote.price && (
+                  <p><span className="font-medium">Ödenen Tutar:</span> {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(selectedQuote.price))}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-gray-700 mb-2">Belge Dosyası (PDF, DOC, DOCX) *</label>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                required
+              />
+              {uploadFile && (
+                <div className="mt-2 text-sm text-gray-600">
+                  Seçilen dosya: {uploadFile.name}
+                </div>
+              )}
+            </div>
+
+            {uploadProgress > 0 && (
+              <div className="mb-4">
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+                <p className="text-sm text-gray-600 mt-1">Yükleniyor... {uploadProgress}%</p>
+              </div>
+            )}
+
+            <div className="flex space-x-4">
+              <button
+                onClick={uploadDocument}
+                disabled={!uploadFile || uploadProgress > 0}
+                className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50"
+              >
+                {uploadProgress > 0 ? 'Yükleniyor...' : 'Belgeyi Yükle'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setUploadFile(null);
+                  setUploadProgress(0);
+                }}
+                className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
+              >
+                İptal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
