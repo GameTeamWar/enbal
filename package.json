@@ -9,10 +9,12 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@types/nodemailer": "^6.4.17",
     "axios": "^1.10.0",
     "date-fns": "^4.1.0",
     "firebase": "^11.10.0",
     "next": "15.3.5",
+    "nodemailer": "^7.0.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hot-toast": "^2.5.2",
