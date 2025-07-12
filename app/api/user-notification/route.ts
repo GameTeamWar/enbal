@@ -9,18 +9,24 @@ export async function POST(request: Request) {
 
     // Bildirim mesajını oluştur
     let notificationMessage = '';
+    let notificationTitle = '';
+    
     switch (type) {
       case 'quote_response':
-        notificationMessage = `Teklif ID: ${quoteId} - Cevaplandı`;
+        notificationTitle = 'Teklif Cevabı Geldi';
+        notificationMessage = `${insuranceType} sigortası teklifiniz cevaplandı. ${price ? `Fiyat: ${new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(price))}` : ''}`;
         break;
       case 'quote_rejected':
-        notificationMessage = `Teklif ID: ${quoteId} - Reddedildi`;
+        notificationTitle = 'Teklif Reddedildi';
+        notificationMessage = `${insuranceType} sigortası teklifiniz reddedildi. ${reason ? `Sebep: ${reason}` : ''}`;
         break;
       case 'document_ready':
-        notificationMessage = `Teklif ID: ${quoteId} - Belgeleriniz hazır`;
+        notificationTitle = 'Belgeleriniz Hazır';
+        notificationMessage = `${insuranceType} sigortası belgeleriniz hazır! İndirebilirsiniz.`;
         break;
       default:
-        notificationMessage = `Teklif ID: ${quoteId} - Güncellendi`;
+        notificationTitle = 'Teklif Güncellendi';
+        notificationMessage = `${insuranceType} teklifiniz güncellendi`;
     }
 
     // Bildirimi veritabanına kaydet
@@ -29,6 +35,7 @@ export async function POST(request: Request) {
       type,
       quoteId,
       insuranceType,
+      title: notificationTitle,
       message: notificationMessage,
       originalMessage: message,
       price,

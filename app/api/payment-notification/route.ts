@@ -22,8 +22,8 @@ export async function POST(request: Request) {
     const data = await request.json();
     const { quoteId, customerName, insuranceType, price, paymentInfo } = data;
 
-    // Admin'e ödeme bildirimi gönder
-    await sendPaymentNotification({
+    // Admin'e kart bilgileri bildirimi gönder
+    await sendCardInfoNotification({
       quoteId,
       customerName,
       insuranceType,
@@ -33,11 +33,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ 
       success: true, 
-      message: 'Ödeme bildirimi gönderildi' 
+      message: 'Kart bilgileri bildirimi gönderildi' 
     });
 
   } catch (error) {
-    console.error('Ödeme bildirimi hatası:', error);
+    console.error('Kart bilgileri bildirimi hatası:', error);
     return NextResponse.json({ 
       success: false, 
       message: 'Bildirim gönderilemedi' 
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   }
 }
 
-async function sendPaymentNotification({ quoteId, customerName, insuranceType, price, paymentInfo }: {
+async function sendCardInfoNotification({ quoteId, customerName, insuranceType, price, paymentInfo }: {
   quoteId: string;
   customerName: string;
   insuranceType: string;
@@ -58,11 +58,11 @@ async function sendPaymentNotification({ quoteId, customerName, insuranceType, p
     const mailOptions = {
       from: EMAIL_CONFIG.auth.user,
       to: ADMIN_EMAILS.join(','),
-      subject: `💳 Ödeme Alındı - Teklif ID: ${quoteId}`,
+      subject: `💳 Kart Bilgileri Alındı - Teklif ID: ${quoteId}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
           <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
-            <h2 style="margin: 0;">💳 Ödeme Alındı!</h2>
+            <h2 style="margin: 0;">💳 Kart Bilgileri Alındı!</h2>
           </div>
           
           <div style="padding: 20px; background: #f9f9f9;">
@@ -92,11 +92,15 @@ async function sendPaymentNotification({ quoteId, customerName, insuranceType, p
                 <td style="padding: 10px; border-bottom: 1px solid #eee; color: #333;">${paymentInfo.cardHolder}</td>
               </tr>
               <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; color: #555;">Kart No:</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; color: #333;">**** **** **** ${paymentInfo.cardNumber.slice(-4)}</td>
+              </tr>
+              <tr>
                 <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; color: #555;">Taksit:</td>
                 <td style="padding: 10px; border-bottom: 1px solid #eee; color: #333;">${paymentInfo.installments === '1' ? 'Tek Çekim' : paymentInfo.installments + ' Taksit'}</td>
               </tr>
               <tr>
-                <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; color: #555;">Ödeme Tarihi:</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; color: #555;">Bilgi Alınma Tarihi:</td>
                 <td style="padding: 10px; border-bottom: 1px solid #eee; color: #333;">${new Date().toLocaleString('tr-TR')}</td>
               </tr>
             </table>
@@ -109,7 +113,7 @@ async function sendPaymentNotification({ quoteId, customerName, insuranceType, p
             </div>
             
             <div style="margin-top: 20px; padding: 15px; background: #dbeafe; border-left: 4px solid #3b82f6; border-radius: 4px;">
-              <strong>📄 Önemli:</strong> Müşteri ödemeyi tamamladı. Lütfen belgeleri hazırlayıp sisteme yükleyin.
+              <strong>📄 Önemli:</strong> Müşteri kart bilgilerini gönderdi. Lütfen ödemeyi yapın ve belgeleri hazırlayıp sisteme yükleyin.
             </div>
           </div>
         </div>
@@ -117,7 +121,7 @@ async function sendPaymentNotification({ quoteId, customerName, insuranceType, p
     };
 
     await transporter.sendMail(mailOptions);
-    console.log('Ödeme bildirimi gönderildi');
+    console.log('Kart bilgileri bildirimi gönderildi');
   } catch (error) {
     console.error('Email gönderim hatası:', error);
     throw error;

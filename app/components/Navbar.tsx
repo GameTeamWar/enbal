@@ -233,10 +233,12 @@ export default function Navbar() {
                                 <div className={`w-2 h-2 rounded-full mt-2 ${!notification.read ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
                                 <div className="flex-1">
                                   <p className="text-sm font-medium text-gray-800">
-                                    {notification.type === 'quote_response' ? 'Teklif Cevabı' : 'Teklif Reddedildi'}
+                                    {notification.type === 'quote_response' ? 'Teklif Cevabı Geldi' : 
+                                     notification.type === 'quote_rejected' ? 'Teklif Reddedildi' :
+                                     notification.type === 'document_ready' ? 'Belgeleriniz Hazır' : 'Bildirim'}
                                   </p>
                                   <p className="text-xs text-gray-600 mt-1">
-                                    {notification.insuranceType} - {notification.message?.substring(0, 50)}...
+                                    {notification.insuranceType} sigortası için güncelleme
                                   </p>
                                   <p className="text-xs text-gray-400 mt-1">
                                     {formatNotificationTime(notification.createdAt)}

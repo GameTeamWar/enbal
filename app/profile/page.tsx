@@ -18,7 +18,11 @@ export default function Profile() {
     phone: '',
     tcno: '',
     birthdate: '',
-    address: ''
+    address: '',
+    plate: '',
+    registration: '',
+    propertyType: '',
+    propertyAddress: ''
   });
 
   useEffect(() => {
@@ -34,7 +38,11 @@ export default function Profile() {
             phone: userData.phone || '',
             tcno: userData.tcno || '',
             birthdate: userData.birthdate || '',
-            address: userData.address || ''
+            address: userData.address || '',
+            plate: userData.plate || '',
+            registration: userData.registration || '',
+            propertyType: userData.propertyType || '',
+            propertyAddress: userData.propertyAddress || ''
           });
         }
       } else {
@@ -136,6 +144,41 @@ export default function Profile() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-gray-700 mb-2">Araç Plakası</label>
+                  <input
+                    type="text"
+                    value={formData.plate}
+                    onChange={(e) => setFormData({ ...formData, plate: e.target.value })}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    placeholder="34ABC123"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 mb-2">Ruhsat Seri No</label>
+                  <input
+                    type="text"
+                    value={formData.registration}
+                    onChange={(e) => setFormData({ ...formData, registration: e.target.value })}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    placeholder="AA000000"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 mb-2">Mülk Türü</label>
+                  <select
+                    value={formData.propertyType}
+                    onChange={(e) => setFormData({ ...formData, propertyType: e.target.value })}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  >
+                    <option value="">Seçiniz</option>
+                    <option value="Ev">Ev</option>
+                    <option value="İşyeri">İşyeri</option>
+                  </select>
+                </div>
+
                 <div className="md:col-span-2">
                   <label className="block text-gray-700 mb-2">Adres</label>
                   <textarea
@@ -143,6 +186,17 @@ export default function Profile() {
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
                     rows={3}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-gray-700 mb-2">Mülk Adresi (Farklıysa)</label>
+                  <textarea
+                    value={formData.propertyAddress}
+                    onChange={(e) => setFormData({ ...formData, propertyAddress: e.target.value })}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                    rows={2}
+                    placeholder="Mülk adresi farklıysa giriniz"
                   />
                 </div>
               </div>
