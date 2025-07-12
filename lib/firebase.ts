@@ -1,5 +1,5 @@
 // lib/firebase.ts - Düzeltilmiş Firebase Configuration
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
@@ -16,8 +16,16 @@ const firebaseConfig = {
   measurementId: "G-M4EMGQWC8Z"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase - Duplicate app kontrolü ile
+let app;
+try {
+  // Eğer zaten bir app varsa onu kullan, yoksa yeni oluştur
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+} catch (error) {
+  console.error('Firebase initialization error:', error);
+  // Fallback: mevcut app'i kullan
+  app = getApp();
+}
 
 // Initialize services
 export const auth = getAuth(app);

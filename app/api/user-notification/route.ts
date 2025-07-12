@@ -1,5 +1,7 @@
+// app/api/user-notification/route.ts
 import { NextResponse } from 'next/server';
 import { doc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+// lib/firebase.ts'den import et - TEKRAR BAŞLATMA!
 import { db } from '@/lib/firebase';
 
 export async function POST(request: Request) {

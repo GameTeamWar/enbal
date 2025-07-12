@@ -4,7 +4,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db, getMessagingInstance } from '@/lib/firebase';
 
 // Güncel VAPID key - Firebase Console'dan alınacak
-const vapidKey = 'BOqVG7JK8z5Q2Y0J4tH1m5YyZ3kT_XpDtNg7RzB0sKhEzQ1LzI3Z8cP5rV2sSfQmNjUv6lR8hF4tMzG9Xp1B2y0';
+const vapidKey = 'O3z6guGvKPxlDyZTAriwuwYFqCGcSOubgJ6TR2FHF1k';
 
 // Service Worker registration - geliştirilmiş versiyon
 const registerServiceWorker = async () => {
@@ -202,20 +202,9 @@ const showCustomNotification = (options: {
         icon: options.icon,
         badge: '/favicon.ico',
         tag: 'enbal-notification',
-        requireInteraction: true,
-        vibrate: [200, 100, 200],
-        actions: [
-          {
-            action: 'view',
-            title: 'Görüntüle',
-            icon: '/icon-view.png'
-          },
-          {
-            action: 'close',
-            title: 'Kapat',
-            icon: '/icon-close.png'
-          }
-        ]
+        requireInteraction: true
+        // Note: 'actions' property is not supported in standard Notification API
+        // To use actions, consider using the ServiceWorkerRegistration.showNotification() method instead
       });
 
       notification.onclick = () => {
