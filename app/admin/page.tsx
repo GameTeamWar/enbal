@@ -319,28 +319,95 @@ export default function Admin() {
     try {
       setUploadProgress(10);
       
-      const storageRef = ref(storage, `documents/${selectedQuote.id}/${uploadFile.name}`);
+      // Dosya boyutu kontrolü (max 10MB)
+      if (uploadFile.size > 10 * 1024 * 1024) {
+        toast.error('Dosya boyutu 10MB\'dan büyük olamaz!');
+        setUploadProgress(0);
+        return;
+      }
+
+      // Dosya türü kontrolü
+      const allowedTypes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'text/plain'
+      ];
+      
+      if (!allowedTypes.includes(uploadFile.type)) {
+        toast.error('Sadece PDF, Word dosyaları, resim dosyaları veya metin dosyaları yükleyebilirsiniz!');
+        setUploadProgress(0);
+        return;
+      }
+
+      console.log('📄 Dosya yükleme başlıyor:', {
+        name: uploadFile.name,
+        type: uploadFile.type,
+        size: uploadFile.size,
+        sizeInMB: (uploadFile.size / 1024 / 1024).toFixed(2)
+      });
+      
+      setUploadProgress(30);
+      
+      // Benzersiz dosya adı oluştur
+      const timestamp = Date.now();
+      const cleanFileName = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const fileName = `${timestamp}_${selectedQuote.id}_${cleanFileName}`;
+      const storagePath = `documents/${selectedQuote.id}/${fileName}`;
+      
+      console.log('📁 Storage path:', storagePath);
+      
+      const storageRef = ref(storage, storagePath);
       
       setUploadProgress(50);
-      const snapshot = await uploadBytes(storageRef, uploadFile);
+      
+      // Dosyayı yükle - uploadBytes kullan
+      console.log('⬆️ Firebase Storage\'a yükleniyor...');
+      const snapshot = await uploadBytes(storageRef, uploadFile, {
+        contentType: uploadFile.type,
+        customMetadata: {
+          'quoteId': selectedQuote.id,
+          'uploadedBy': 'admin',
+          'originalName': uploadFile.name
+        }
+      });
+      
+      console.log('✅ Dosya yüklendi:', snapshot.metadata);
       
       setUploadProgress(80);
-      const downloadURL = await getDownloadURL(snapshot.ref);
       
+      // Download URL'i al
+      console.log('🔗 Download URL alınıyor...');
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      console.log('🌐 Download URL:', downloadURL);
+      
+      setUploadProgress(90);
+      
+      // Firestore'u güncelle
+      console.log('💾 Firestore güncelleniyor...');
       await updateDoc(doc(db, 'quotes', selectedQuote.id), {
         documentUrl: downloadURL,
         documentName: uploadFile.name,
+        documentPath: storagePath,
+        documentSize: uploadFile.size,
+        documentType: uploadFile.type,
         awaitingProcessing: false,
         documentUploadDate: new Date(),
         customerStatus: 'completed'
       });
+
+      console.log('📧 Kullanıcı bildirimi gönderiliyor...');
 
       // Kullanıcıya belge hazır bildirimi gönder
       await sendUserNotification(selectedQuote.userId, {
         type: 'document_ready',
         quoteId: selectedQuote.id,
         insuranceType: selectedQuote.insuranceType,
-        message: 'Belgeleriniz hazır! İndirebilirsiniz.'
+        message: 'Belgeleriniz hazır! İndirebilirsiniz.',
+        documentUrl: downloadURL
       });
 
       // Web Push Notification gönder
@@ -351,14 +418,71 @@ export default function Admin() {
       });
 
       setUploadProgress(100);
-      toast.success('Belge başarıyla yüklendi!');
-      setShowUploadModal(false);
-      setSelectedQuote(null);
-      setUploadFile(null);
-      setUploadProgress(0);
-    } catch (error) {
-      toast.error('Belge yüklenemedi!');
-      console.error(error);
+      
+      // Başarı mesajı
+      toast.success(`Belge başarıyla yüklendi! (${(uploadFile.size / 1024 / 1024).toFixed(2)} MB)`);
+      
+      // Modal'ı kapat ve state'i temizle
+      setTimeout(() => {
+        setShowUploadModal(false);
+        setSelectedQuote(null);
+        setUploadFile(null);
+        setUploadProgress(0);
+      }, 1500);
+      
+    } catch (error: any) {
+      console.error('❌ Belge yükleme hatası:', error);
+      
+      // Detaylı hata analizi
+      let errorMessage = 'Belge yüklenemedi!';
+      
+      if (error.code) {
+        switch (error.code) {
+          case 'storage/unauthorized':
+            errorMessage = 'Yetki hatası: Firebase Storage erişimi reddedildi!';
+            break;
+          case 'storage/quota-exceeded':
+            errorMessage = 'Depolama kotası aşıldı!';
+            break;
+          case 'storage/invalid-checksum':
+            errorMessage = 'Dosya bozuk, lütfen tekrar deneyin!';
+            break;
+          case 'storage/retry-limit-exceeded':
+            errorMessage = 'Ağ problemi: Lütfen internet bağlantınızı kontrol edin!';
+            break;
+          case 'storage/canceled':
+            errorMessage = 'Yükleme iptal edildi!';
+            break;
+          case 'storage/invalid-url':
+          case 'storage/invalid-argument':
+            errorMessage = 'Geçersiz dosya formatı!';
+            break;
+          default:
+            errorMessage = `Firebase hatası: ${error.code}`;
+        }
+      } else if (error.message) {
+        if (error.message.includes('Network')) {
+          errorMessage = 'Ağ hatası: İnternet bağlantınızı kontrol edin!';
+        } else if (error.message.includes('permission')) {
+          errorMessage = 'İzin hatası: Firebase ayarlarını kontrol edin!';
+        } else {
+          errorMessage = `Hata: ${error.message}`;
+        }
+      }
+      
+      // Debug bilgileri (sadece development'ta)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 Debug bilgileri:', {
+          errorCode: error.code,
+          errorMessage: error.message,
+          firebaseError: error,
+          storageRef: `documents/${selectedQuote?.id}/${uploadFile?.name}`,
+          fileSize: uploadFile?.size,
+          fileType: uploadFile?.type
+        });
+      }
+      
+      toast.error(errorMessage);
       setUploadProgress(0);
     }
   };
@@ -1069,153 +1193,6 @@ export default function Admin() {
               <div className="flex space-x-4 mt-6">
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
-                >
-                  Kullanıcı Oluştur
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowUserModal(false)}
-                  className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
-                >
-                  İptal
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Kullanıcı Düzenleme Modal */}
-      {showEditUserModal && selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-gray-800">Kullanıcı Düzenle</h3>
-              <button
-                onClick={() => setShowEditUserModal(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <form onSubmit={updateUser}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-gray-700 mb-2">İsim *</label>
-                  <input
-                    type="text"
-                    value={userFormData.name}
-                    onChange={(e) => setUserFormData({...userFormData, name: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Soyisim *</label>
-                  <input
-                    type="text"
-                    value={userFormData.surname}
-                    onChange={(e) => setUserFormData({...userFormData, surname: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Telefon</label>
-                  <input
-                    type="tel"
-                    value={selectedUser.phone}
-                    disabled
-                    className="w-full px-4 py-3 border rounded-lg bg-gray-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">TC No</label>
-                  <input
-                    type="text"
-                    value={userFormData.tcno}
-                    onChange={(e) => setUserFormData({...userFormData, tcno: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    maxLength={11}
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Doğum Tarihi</label>
-                  <input
-                    type="date"
-                    value={userFormData.birthdate}
-                    onChange={(e) => setUserFormData({...userFormData, birthdate: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Plaka</label>
-                  <input
-                    type="text"
-                    value={userFormData.plate}
-                    onChange={(e) => setUserFormData({...userFormData, plate: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Ruhsat Seri No</label>
-                  <input
-                    type="text"
-                    value={userFormData.registration}
-                    onChange={(e) => setUserFormData({...userFormData, registration: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Mülk Türü</label>
-                  <select
-                    value={userFormData.propertyType}
-                    onChange={(e) => setUserFormData({...userFormData, propertyType: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  >
-                    <option value="">Seçiniz</option>
-                    <option value="Ev">Ev</option>
-                    <option value="İşyeri">İşyeri</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Rol</label>
-                  <select
-                    value={userFormData.role}
-                    onChange={(e) => setUserFormData({...userFormData, role: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  >
-                    <option value="user">Kullanıcı</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-gray-700 mb-2">Adres</label>
-                  <textarea
-                    value={userFormData.address}
-                    onChange={(e) => setUserFormData({...userFormData, address: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    rows={3}
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-gray-700 mb-2">Mülk Adresi</label>
-                  <textarea
-                    value={userFormData.propertyAddress}
-                    onChange={(e) => setUserFormData({...userFormData, propertyAddress: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    rows={2}
-                  />
-                </div>
-              </div>
-
-              <div className="flex space-x-4 mt-6">
-                <button
-                  type="submit"
                   className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
                 >
                   Güncelle
@@ -1352,14 +1329,18 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Belge Yükleme Modal */}
+      {/* Belge Yükleme Modal - Geliştirilmiş versiyon */}
       {showUploadModal && selectedQuote && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-2xl font-bold text-gray-800">Belge Yükle</h3>
               <button
-                onClick={() => setShowUploadModal(false)}
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setUploadFile(null);
+                  setUploadProgress(0);
+                }}
                 className="text-gray-500 hover:text-gray-700"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1381,30 +1362,79 @@ export default function Admin() {
             </div>
 
             <div className="mb-6">
-              <label className="block text-gray-700 mb-2">Belge Dosyası (PDF, DOC, DOCX) *</label>
+              <label className="block text-gray-700 mb-2">
+                Belge Dosyası *
+                <span className="text-sm text-gray-500 ml-2">(PDF, Word, JPG, PNG - Max 10MB)</span>
+              </label>
               <input
                 type="file"
-                accept=".pdf,.doc,.docx"
-                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setUploadFile(file);
+                  
+                  if (file) {
+                    console.log('Seçilen dosya:', {
+                      name: file.name,
+                      type: file.type,
+                      size: file.size,
+                      sizeInMB: (file.size / 1024 / 1024).toFixed(2)
+                    });
+                  }
+                }}
                 className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
                 required
               />
+              
               {uploadFile && (
-                <div className="mt-2 text-sm text-gray-600">
-                  Seçilen dosya: {uploadFile.name}
+                <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="text-sm space-y-1">
+                    <p><span className="font-medium text-green-800">Dosya:</span> {uploadFile.name}</p>
+                    <p><span className="font-medium text-green-800">Boyut:</span> {(uploadFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                    <p><span className="font-medium text-green-800">Tür:</span> {uploadFile.type}</p>
+                  </div>
                 </div>
               )}
             </div>
 
+            {/* Upload Progress */}
             {uploadProgress > 0 && (
-              <div className="mb-4">
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                    style={{ width: `${uploadProgress}%` }}
-                  ></div>
+              <div className="mb-6">
+                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                  <span>Yükleniyor...</span>
+                  <span>{uploadProgress}%</span>
                 </div>
-                <p className="text-sm text-gray-600 mt-1">Yükleniyor... {uploadProgress}%</p>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300" 
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {uploadProgress < 30 && "Dosya hazırlanıyor..."}
+                  {uploadProgress >= 30 && uploadProgress < 50 && "Dosya kontrol ediliyor..."}
+                  {uploadProgress >= 50 && uploadProgress < 80 && "Dosya yükleniyor..."}
+                  {uploadProgress >= 80 && uploadProgress < 100 && "Veritabanı güncelleniyor..."}
+                  {uploadProgress >= 100 && "Tamamlandı!"}
+                </div>
+              </div>
+            )}
+
+            {/* Debug bilgileri (sadece development'ta göster) */}
+            {process.env.NODE_ENV === 'development' && uploadFile && (
+              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <h5 className="font-medium text-yellow-800 mb-2">Debug Bilgileri:</h5>
+                <div className="text-xs text-yellow-700 space-y-1">
+                  <p>Storage Path: documents/{selectedQuote.id}/{uploadFile.name}</p>
+                  <p>File Type Check: {[
+                    'application/pdf',
+                    'application/msword',
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'image/jpeg',
+                    'image/png'
+                  ].includes(uploadFile.type) ? '✅ Valid' : '❌ Invalid'}</p>
+                  <p>Size Check: {uploadFile.size <= 10 * 1024 * 1024 ? '✅ Valid' : '❌ Too Large'}</p>
+                </div>
               </div>
             )}
 
@@ -1412,9 +1442,9 @@ export default function Admin() {
               <button
                 onClick={uploadDocument}
                 disabled={!uploadFile || uploadProgress > 0}
-                className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50"
+                className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {uploadProgress > 0 ? 'Yükleniyor...' : 'Belgeyi Yükle'}
+                {uploadProgress > 0 ? `Yükleniyor... ${uploadProgress}%` : 'Belgeyi Yükle'}
               </button>
               <button
                 onClick={() => {
@@ -1422,7 +1452,8 @@ export default function Admin() {
                   setUploadFile(null);
                   setUploadProgress(0);
                 }}
-                className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
+                disabled={uploadProgress > 0}
+                className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition disabled:opacity-50"
               >
                 İptal
               </button>
@@ -1433,3 +1464,4 @@ export default function Admin() {
     </div>
   );
 }
+                  
