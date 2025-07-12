@@ -3,10 +3,32 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, getDocs, doc, getDoc, deleteDoc, updateDoc, onSnapshot, orderBy, addDoc, setDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, getDoc, deleteDoc, updateDoc, onSnapshot, orderBy, addDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth, db, storage } from '@/lib/firebase';
+// lib/firebase.js
+import { initializeApp } from "firebase/app";
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBv89xYNDaxaJO7cDmBVPgsXxQRDXp6Dus",
+  authDomain: "enbal-c028e.firebaseapp.com",
+  projectId: "enbal-c028e",
+  storageBucket: "enbal-c028e.firebasestorage.app",
+  messagingSenderId: "565874833407",
+  appId: "1:565874833407:web:e1e81ff346185a2d8e19ca",
+  measurementId: "G-M4EMGQWC8Z"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
+// Servisleri başlat ve export et
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -19,27 +41,10 @@ export default function Admin() {
   const [selectedQuote, setSelectedQuote] = useState<any>(null);
   const [showResponseModal, setShowResponseModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showUserModal, setShowUserModal] = useState(false);
-  const [showEditUserModal, setShowEditUserModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
   const [responseData, setResponseData] = useState({
     adminResponse: '',
     price: '',
     adminNotes: ''
-  });
-  const [userFormData, setUserFormData] = useState({
-    name: '',
-    surname: '',
-    phone: '',
-    password: '',
-    tcno: '',
-    birthdate: '',
-    address: '',
-    plate: '',
-    registration: '',
-    propertyType: '',
-    propertyAddress: '',
-    role: 'user'
   });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [showCardInfoModal, setShowCardInfoModal] = useState(false);
@@ -48,9 +53,8 @@ export default function Admin() {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [newQuotesCount, setNewQuotesCount] = useState(0);
   const [paidQuotesCount, setPaidQuotesCount] = useState(0);
-  const [showCardDetails, setShowCardDetails] = useState(false);
 
-  const notificationSound = typeof Audio !== 'undefined' ? new Audio('/notification-sound.mp3') : null;
+  const notificationSound = typeof Audio !== 'undefined' ? new Audio('/sounds/nsound.mp3') : null;
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -85,6 +89,7 @@ export default function Admin() {
           status?: string; 
           customerStatus?: string; 
           awaitingProcessing?: boolean;
+          [key: string]: any;
         };
         quotesData.push(data);
         
@@ -172,104 +177,6 @@ export default function Admin() {
   const handleCardInfo = (quote: any) => {
     setSelectedCardQuote(quote);
     setShowCardInfoModal(true);
-    setShowCardDetails(false);
-  };
-
-  const handleAddUser = () => {
-    setUserFormData({
-      name: '',
-      surname: '',
-      phone: '',
-      password: '',
-      tcno: '',
-      birthdate: '',
-      address: '',
-      plate: '',
-      registration: '',
-      propertyType: '',
-      propertyAddress: '',
-      role: 'user'
-    });
-    setShowUserModal(true);
-  };
-
-  const handleEditUser = (user: any) => {
-    setSelectedUser(user);
-    setUserFormData({
-      name: user.name || '',
-      surname: user.surname || '',
-      phone: user.phone || '',
-      password: '',
-      tcno: user.tcno || '',
-      birthdate: user.birthdate || '',
-      address: user.address || '',
-      plate: user.plate || '',
-      registration: user.registration || '',
-      propertyType: user.propertyType || '',
-      propertyAddress: user.propertyAddress || '',
-      role: user.role || 'user'
-    });
-    setShowEditUserModal(true);
-  };
-
-  const createUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      const email = `${userFormData.phone}@enbalsigorta.com`;
-      const userCredential = await createUserWithEmailAndPassword(auth, email, userFormData.password);
-      
-      await setDoc(doc(db, 'users', userCredential.user.uid), {
-        name: userFormData.name,
-        surname: userFormData.surname,
-        phone: userFormData.phone,
-        tcno: userFormData.tcno,
-        birthdate: userFormData.birthdate,
-        address: userFormData.address,
-        plate: userFormData.plate,
-        registration: userFormData.registration,
-        propertyType: userFormData.propertyType,
-        propertyAddress: userFormData.propertyAddress,
-        role: userFormData.role,
-        createdAt: new Date(),
-        notifications: true
-      });
-      
-      toast.success('Kullanıcı başarıyla oluşturuldu!');
-      setShowUserModal(false);
-      fetchUsers();
-    } catch (error) {
-      toast.error('Kullanıcı oluşturulamadı!');
-      console.error(error);
-    }
-  };
-
-  const updateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      const updateData = {
-        name: userFormData.name,
-        surname: userFormData.surname,
-        tcno: userFormData.tcno,
-        birthdate: userFormData.birthdate,
-        address: userFormData.address,
-        plate: userFormData.plate,
-        registration: userFormData.registration,
-        propertyType: userFormData.propertyType,
-        propertyAddress: userFormData.propertyAddress,
-        role: userFormData.role
-      };
-
-      await updateDoc(doc(db, 'users', selectedUser.id), updateData);
-      
-      toast.success('Kullanıcı bilgileri güncellendi!');
-      setShowEditUserModal(false);
-      fetchUsers();
-    } catch (error) {
-      toast.error('Kullanıcı güncellenemedi!');
-      console.error(error);
-    }
   };
 
   const sendQuoteResponse = async () => {
@@ -294,13 +201,6 @@ export default function Admin() {
         price: responseData.price
       });
 
-      // Web Push Notification gönder
-      await sendWebPushNotification(selectedQuote.userId, {
-        title: 'Teklif Cevabı Geldi!',
-        body: `${selectedQuote.insuranceType} teklifiniz cevaplandı`,
-        icon: '/favicon.ico'
-      });
-
       toast.success('Teklif cevabı gönderildi!');
       setShowResponseModal(false);
       setSelectedQuote(null);
@@ -319,87 +219,23 @@ export default function Admin() {
     try {
       setUploadProgress(10);
       
-      // Dosya boyutu kontrolü (max 10MB)
-      if (uploadFile.size > 10 * 1024 * 1024) {
-        toast.error('Dosya boyutu 10MB\'dan büyük olamaz!');
-        setUploadProgress(0);
-        return;
-      }
-
-      // Dosya türü kontrolü
-      const allowedTypes = [
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'image/jpeg',
-        'image/jpg',
-        'image/png',
-        'text/plain'
-      ];
-      
-      if (!allowedTypes.includes(uploadFile.type)) {
-        toast.error('Sadece PDF, Word dosyaları, resim dosyaları veya metin dosyaları yükleyebilirsiniz!');
-        setUploadProgress(0);
-        return;
-      }
-
-      console.log('📄 Dosya yükleme başlıyor:', {
-        name: uploadFile.name,
-        type: uploadFile.type,
-        size: uploadFile.size,
-        sizeInMB: (uploadFile.size / 1024 / 1024).toFixed(2)
-      });
-      
-      setUploadProgress(30);
-      
-      // Benzersiz dosya adı oluştur
-      const timestamp = Date.now();
-      const cleanFileName = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const fileName = `${timestamp}_${selectedQuote.id}_${cleanFileName}`;
-      const storagePath = `documents/${selectedQuote.id}/${fileName}`;
-      
-      console.log('📁 Storage path:', storagePath);
-      
-      const storageRef = ref(storage, storagePath);
+      // Firebase Storage'a dosya yükle
+      const storageRef = ref(storage, `documents/${selectedQuote.id}/${uploadFile.name}`);
       
       setUploadProgress(50);
-      
-      // Dosyayı yükle - uploadBytes kullan
-      console.log('⬆️ Firebase Storage\'a yükleniyor...');
-      const snapshot = await uploadBytes(storageRef, uploadFile, {
-        contentType: uploadFile.type,
-        customMetadata: {
-          'quoteId': selectedQuote.id,
-          'uploadedBy': 'admin',
-          'originalName': uploadFile.name
-        }
-      });
-      
-      console.log('✅ Dosya yüklendi:', snapshot.metadata);
+      const snapshot = await uploadBytes(storageRef, uploadFile);
       
       setUploadProgress(80);
-      
-      // Download URL'i al
-      console.log('🔗 Download URL alınıyor...');
       const downloadURL = await getDownloadURL(snapshot.ref);
-      console.log('🌐 Download URL:', downloadURL);
-      
-      setUploadProgress(90);
       
       // Firestore'u güncelle
-      console.log('💾 Firestore güncelleniyor...');
       await updateDoc(doc(db, 'quotes', selectedQuote.id), {
         documentUrl: downloadURL,
         documentName: uploadFile.name,
-        documentPath: storagePath,
-        documentSize: uploadFile.size,
-        documentType: uploadFile.type,
         awaitingProcessing: false,
         documentUploadDate: new Date(),
         customerStatus: 'completed'
       });
-
-      console.log('📧 Kullanıcı bildirimi gönderiliyor...');
 
       // Kullanıcıya belge hazır bildirimi gönder
       await sendUserNotification(selectedQuote.userId, {
@@ -410,79 +246,15 @@ export default function Admin() {
         documentUrl: downloadURL
       });
 
-      // Web Push Notification gönder
-      await sendWebPushNotification(selectedQuote.userId, {
-        title: 'Belgeleriniz Hazır!',
-        body: `${selectedQuote.insuranceType} belgeleriniz indirilebilir`,
-        icon: '/favicon.ico'
-      });
-
       setUploadProgress(100);
-      
-      // Başarı mesajı
-      toast.success(`Belge başarıyla yüklendi! (${(uploadFile.size / 1024 / 1024).toFixed(2)} MB)`);
-      
-      // Modal'ı kapat ve state'i temizle
-      setTimeout(() => {
-        setShowUploadModal(false);
-        setSelectedQuote(null);
-        setUploadFile(null);
-        setUploadProgress(0);
-      }, 1500);
-      
-    } catch (error: any) {
-      console.error('❌ Belge yükleme hatası:', error);
-      
-      // Detaylı hata analizi
-      let errorMessage = 'Belge yüklenemedi!';
-      
-      if (error.code) {
-        switch (error.code) {
-          case 'storage/unauthorized':
-            errorMessage = 'Yetki hatası: Firebase Storage erişimi reddedildi!';
-            break;
-          case 'storage/quota-exceeded':
-            errorMessage = 'Depolama kotası aşıldı!';
-            break;
-          case 'storage/invalid-checksum':
-            errorMessage = 'Dosya bozuk, lütfen tekrar deneyin!';
-            break;
-          case 'storage/retry-limit-exceeded':
-            errorMessage = 'Ağ problemi: Lütfen internet bağlantınızı kontrol edin!';
-            break;
-          case 'storage/canceled':
-            errorMessage = 'Yükleme iptal edildi!';
-            break;
-          case 'storage/invalid-url':
-          case 'storage/invalid-argument':
-            errorMessage = 'Geçersiz dosya formatı!';
-            break;
-          default:
-            errorMessage = `Firebase hatası: ${error.code}`;
-        }
-      } else if (error.message) {
-        if (error.message.includes('Network')) {
-          errorMessage = 'Ağ hatası: İnternet bağlantınızı kontrol edin!';
-        } else if (error.message.includes('permission')) {
-          errorMessage = 'İzin hatası: Firebase ayarlarını kontrol edin!';
-        } else {
-          errorMessage = `Hata: ${error.message}`;
-        }
-      }
-      
-      // Debug bilgileri (sadece development'ta)
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 Debug bilgileri:', {
-          errorCode: error.code,
-          errorMessage: error.message,
-          firebaseError: error,
-          storageRef: `documents/${selectedQuote?.id}/${uploadFile?.name}`,
-          fileSize: uploadFile?.size,
-          fileType: uploadFile?.type
-        });
-      }
-      
-      toast.error(errorMessage);
+      toast.success('Belge başarıyla yüklendi!');
+      setShowUploadModal(false);
+      setSelectedQuote(null);
+      setUploadFile(null);
+      setUploadProgress(0);
+    } catch (error) {
+      toast.error('Belge yüklenemedi!');
+      console.error(error);
       setUploadProgress(0);
     }
   };
@@ -505,13 +277,6 @@ export default function Admin() {
         reason: reason
       });
 
-      // Web Push Notification gönder
-      await sendWebPushNotification(quote.userId, {
-        title: 'Teklif Reddedildi',
-        body: `${quote.insuranceType} teklifiniz reddedildi`,
-        icon: '/favicon.ico'
-      });
-
       toast.success('Teklif reddedildi!');
     } catch (error) {
       toast.error('Bir hata oluştu!');
@@ -523,6 +288,7 @@ export default function Admin() {
     if (!userId) return;
 
     try {
+      // Firestore'a bildirim kaydet
       await addDoc(collection(db, 'notifications'), {
         userId,
         ...notificationData,
@@ -530,6 +296,7 @@ export default function Admin() {
         createdAt: new Date()
       });
 
+      // API bildirimi gönder
       await fetch('/api/user-notification', {
         method: 'POST',
         headers: {
@@ -545,23 +312,6 @@ export default function Admin() {
     }
   };
 
-  const sendWebPushNotification = async (userId: string, notificationData: any) => {
-    try {
-      await fetch('/api/web-push-notification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId,
-          ...notificationData
-        }),
-      });
-    } catch (error) {
-      console.error('Web push bildirimi gönderilemedi:', error);
-    }
-  };
-
   const getStatusBadge = (quote: any) => {
     let status = quote.status;
     let text = '';
@@ -570,11 +320,11 @@ export default function Admin() {
     if (quote.customerStatus === 'card_submitted') {
       if (quote.documentUrl) {
         status = 'completed';
-        text = 'Tamamlandı';
-        className = 'bg-blue-100 text-blue-800';
+        text = '✅ Belgeler Gönderildi';
+        className = 'bg-green-100 text-green-800';
       } else {
         status = 'card_received';
-        text = 'Kart Bilgileri Alındı';
+        text = '💳 Kart Bilgileri Alındı';
         className = 'bg-orange-100 text-orange-800';
       }
     } else if (quote.customerStatus === 'rejected') {
@@ -584,7 +334,7 @@ export default function Admin() {
     } else {
       const statusConfig = {
         pending: { text: 'Beklemede', class: 'bg-yellow-100 text-yellow-800' },
-        responded: { text: 'Cevaplandı', class: 'bg-green-100 text-green-800' },
+        responded: { text: 'Cevaplandı', class: 'bg-blue-100 text-blue-800' },
         rejected: { text: 'Reddedildi', class: 'bg-red-100 text-red-800' }
       };
       
@@ -689,7 +439,6 @@ export default function Admin() {
                     <th className="text-left py-3 px-4">Müşteri</th>
                     <th className="text-left py-3 px-4">Sigorta Türü</th>
                     <th className="text-left py-3 px-4">Telefon</th>
-                    <th className="text-left py-3 px-4">TC No</th>
                     <th className="text-left py-3 px-4">Fiyat</th>
                     <th className="text-left py-3 px-4">Durum</th>
                     <th className="text-left py-3 px-4">İşlemler</th>
@@ -711,7 +460,6 @@ export default function Admin() {
                           {quote.phone}
                         </a>
                       </td>
-                      <td className="py-3 px-4">{quote.tcno || '-'}</td>
                       <td className="py-3 px-4">
                         {quote.price && (
                           <span className="font-semibold text-green-600">
@@ -741,30 +489,28 @@ export default function Admin() {
                             </>
                           )}
                           
-                          {quote.customerStatus === 'card_submitted' && quote.awaitingProcessing && (
+                          {quote.customerStatus === 'card_submitted' && (
                             <>
-                              <button
-                                onClick={() => handleCardInfo(quote)}
-                                className="text-blue-600 hover:text-blue-800 font-medium"
-                              >
-                                Kart Bilgilerini Gör
-                              </button>
-                              <button
-                                onClick={() => handleDocumentUpload(quote)}
-                                className="text-green-600 hover:text-green-800 font-medium"
-                              >
-                                Belge Yükle
-                              </button>
+                              {!quote.documentUrl ? (
+                                <>
+                                  <button
+                                    onClick={() => handleCardInfo(quote)}
+                                    className="text-blue-600 hover:text-blue-800 font-medium"
+                                  >
+                                    Kart Bilgilerini Gör
+                                  </button>
+                                  <button
+                                    onClick={() => handleDocumentUpload(quote)}
+                                    className="text-green-600 hover:text-green-800 font-medium"
+                                  >
+                                    Belge Yükle
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-green-600 font-medium">✅ Belge Gönderildi</span>
+                              )}
                             </>
                           )}
-                          
-                          <button
-                            onClick={() => handleQuoteResponse(quote)}
-                            className="text-gray-600 hover:text-gray-800 font-medium"
-                            title="Detayları Görüntüle"
-                          >
-                            Detay
-                          </button>
                           
                           <button
                             onClick={() => {
@@ -787,71 +533,49 @@ export default function Admin() {
           )}
 
           {activeTab === 'users' && (
-            <div>
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-gray-800">Kullanıcı Yönetimi</h2>
-                <button
-                  onClick={handleAddUser}
-                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:opacity-90 transition"
-                >
-                  Yeni Kullanıcı Ekle
-                </button>
-              </div>
-              
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 px-4">İsim Soyisim</th>
-                      <th className="text-left py-3 px-4">Telefon</th>
-                      <th className="text-left py-3 px-4">TC No</th>
-                      <th className="text-left py-3 px-4">Rol</th>
-                      <th className="text-left py-3 px-4">İşlemler</th>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-4">İsim Soyisim</th>
+                    <th className="text-left py-3 px-4">Telefon</th>
+                    <th className="text-left py-3 px-4">Rol</th>
+                    <th className="text-left py-3 px-4">İşlemler</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b">
+                      <td className="py-3 px-4">{user.name} {user.surname}</td>
+                      <td className="py-3 px-4">{user.phone}</td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-1 rounded text-sm ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
+                          {user.role === 'admin' ? 'Admin' : 'Kullanıcı'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <button
+                          onClick={() => deleteUser(user.id)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          Sil
+                        </button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((user) => (
-                      <tr key={user.id} className="border-b">
-                        <td className="py-3 px-4">{user.name} {user.surname}</td>
-                        <td className="py-3 px-4">{user.phone}</td>
-                        <td className="py-3 px-4">{user.tcno || '-'}</td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-1 rounded text-sm ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
-                            {user.role === 'admin' ? 'Admin' : 'Kullanıcı'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleEditUser(user)}
-                              className="text-blue-600 hover:text-blue-800"
-                            >
-                              Düzenle
-                            </button>
-                            <button
-                              onClick={() => deleteUser(user.id)}
-                              className="text-red-600 hover:text-red-800"
-                            >
-                              Sil
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
       </div>
 
-      {/* Teklif Detay/Cevaplama Modal */}
+      {/* Teklif Cevaplama Modal */}
       {showResponseModal && selectedQuote && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-gray-800">Teklif Detayları</h3>
+              <h3 className="text-2xl font-bold text-gray-800">Teklif Cevapla</h3>
               <button
                 onClick={() => setShowResponseModal(false)}
                 className="text-gray-500 hover:text-gray-700"
@@ -862,344 +586,81 @@ export default function Admin() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              {/* Müşteri Bilgileri */}
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <h4 className="font-semibold text-gray-700 mb-3">Müşteri Bilgileri</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="font-medium">Ad Soyad:</span>
-                    <span>{selectedQuote.name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium">Telefon:</span>
-                    <span>{selectedQuote.phone}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium">TC No:</span>
-                    <span>{selectedQuote.tcno || '-'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium">Doğum Tarihi:</span>
-                    <span>{selectedQuote.birthdate || '-'}</span>
-                  </div>
-                  {selectedQuote.address && (
-                    <div className="pt-2 border-t">
-                      <span className="font-medium">Adres:</span>
-                      <p className="text-gray-600 mt-1">{selectedQuote.address}</p>
-                    </div>
-                  )}
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h4 className="font-semibold text-gray-700 mb-2">Teklif Detayları</h4>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="font-medium">Müşteri:</span> {selectedQuote.name}
                 </div>
-              </div>
-
-              {/* Teklif Bilgileri */}
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-800 mb-3">Teklif Bilgileri</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="font-medium">Sigorta Türü:</span>
-                    <span>{selectedQuote.insuranceType}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium">Teklif ID:</span>
-                    <span>{selectedQuote.id}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium">Tarih:</span>
-                    <span>{selectedQuote.createdAt?.toDate?.()?.toLocaleDateString('tr-TR')}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium">Durum:</span>
-                    <span>{getStatusBadge(selectedQuote)}</span>
-                  </div>
-                  {selectedQuote.plate && (
-                    <div className="flex justify-between">
-                      <span className="font-medium">Plaka:</span>
-                      <span>{selectedQuote.plate}</span>
-                    </div>
-                  )}
-                  {selectedQuote.registration && (
-                    <div className="flex justify-between">
-                      <span className="font-medium">Ruhsat:</span>
-                      <span>{selectedQuote.registration}</span>
-                    </div>
-                  )}
-                  {selectedQuote.propertyType && (
-                    <div className="flex justify-between">
-                      <span className="font-medium">Mülk Türü:</span>
-                      <span>{selectedQuote.propertyType}</span>
-                    </div>
-                  )}
+                <div>
+                  <span className="font-medium">Telefon:</span> {selectedQuote.phone}
                 </div>
+                <div>
+                  <span className="font-medium">Sigorta Türü:</span> {selectedQuote.insuranceType}
+                </div>
+                <div>
+                  <span className="font-medium">Tarih:</span> {selectedQuote.createdAt?.toDate?.()?.toLocaleDateString('tr-TR')}
+                </div>
+                {selectedQuote.plate && (
+                  <div>
+                    <span className="font-medium">Plaka:</span> {selectedQuote.plate}
+                  </div>
+                )}
+                {selectedQuote.tcno && (
+                  <div>
+                    <span className="font-medium">TC No:</span> {selectedQuote.tcno}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Önceki Yanıtlar ve Notlar */}
-            {(selectedQuote.adminResponse || selectedQuote.rejectionReason || selectedQuote.customerRejectionReason) && (
-              <div className="mb-6 p-4 bg-yellow-50 rounded-lg">
-                <h4 className="font-semibold text-yellow-800 mb-3">Geçmiş İşlemler</h4>
-                
-                {selectedQuote.adminResponse && (
-                  <div className="mb-3 p-3 bg-green-100 rounded">
-                    <p className="font-medium text-green-800">Admin Cevabı:</p>
-                    <p className="text-green-700">{selectedQuote.adminResponse}</p>
-                    {selectedQuote.price && (
-                      <p className="text-green-600 font-medium mt-1">
-                        Fiyat: {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(selectedQuote.price))}
-                      </p>
-                    )}
-                    {selectedQuote.responseDate && (
-                      <p className="text-green-600 text-sm mt-1">
-                        Tarih: {selectedQuote.responseDate?.toDate?.()?.toLocaleString('tr-TR')}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {selectedQuote.rejectionReason && (
-                  <div className="mb-3 p-3 bg-red-100 rounded">
-                    <p className="font-medium text-red-800">Admin Red Nedeni:</p>
-                    <p className="text-red-700">{selectedQuote.rejectionReason}</p>
-                  </div>
-                )}
-
-                {selectedQuote.customerRejectionReason && (
-                  <div className="mb-3 p-3 bg-gray-100 rounded">
-                    <p className="font-medium text-gray-800">Müşteri Red Nedeni:</p>
-                    <p className="text-gray-700">{selectedQuote.customerRejectionReason}</p>
-                  </div>
-                )}
-
-                {selectedQuote.adminNotes && (
-                  <div className="p-3 bg-purple-100 rounded">
-                    <p className="font-medium text-purple-800">Admin Notları:</p>
-                    <p className="text-purple-700">{selectedQuote.adminNotes}</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Yeni Yanıt Formu - Sadece pending durumda göster */}
-            {selectedQuote.status === 'pending' && (
-              <form onSubmit={(e) => { e.preventDefault(); sendQuoteResponse(); }}>
-                <div className="mb-4">
-                  <label className="block text-gray-700 mb-2">Müşteri Açıklaması *</label>
-                  <textarea
-                    value={responseData.adminResponse}
-                    onChange={(e) => setResponseData({...responseData, adminResponse: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    rows={4}
-                    placeholder="Müşteriye gönderilecek açıklama..."
-                    required
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-gray-700 mb-2">Fiyat Bilgisi (₺)</label>
-                  <input
-                    type="number"
-                    value={responseData.price}
-                    onChange={(e) => setResponseData({...responseData, price: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    placeholder="Örn: 1500"
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-
-                <div className="mb-6">
-                  <label className="block text-gray-700 mb-2">Admin Notları (İç Kullanım)</label>
-                  <textarea
-                    value={responseData.adminNotes}
-                    onChange={(e) => setResponseData({...responseData, adminNotes: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    rows={3}
-                    placeholder="Sadece admin panelinde görünür notlar..."
-                  />
-                </div>
-
-                <div className="flex space-x-4">
-                  <button
-                    type="submit"
-                    className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
-                  >
-                    Cevabı Gönder
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowResponseModal(false)}
-                    className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
-                  >
-                    Kapat
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* Sadece görüntüleme için kapat butonu */}
-            {selectedQuote.status !== 'pending' && (
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setShowResponseModal(false)}
-                  className="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
-                >
-                  Kapat
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Kullanıcı Ekleme Modal */}
-      {showUserModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-gray-800">Yeni Kullanıcı Ekle</h3>
-              <button
-                onClick={() => setShowUserModal(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <form onSubmit={createUser}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-gray-700 mb-2">İsim *</label>
-                  <input
-                    type="text"
-                    value={userFormData.name}
-                    onChange={(e) => setUserFormData({...userFormData, name: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Soyisim *</label>
-                  <input
-                    type="text"
-                    value={userFormData.surname}
-                    onChange={(e) => setUserFormData({...userFormData, surname: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Telefon *</label>
-                  <input
-                    type="tel"
-                    value={userFormData.phone}
-                    onChange={(e) => setUserFormData({...userFormData, phone: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    placeholder="05XX XXX XX XX"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Şifre *</label>
-                  <input
-                    type="password"
-                    value={userFormData.password}
-                    onChange={(e) => setUserFormData({...userFormData, password: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">TC No</label>
-                  <input
-                    type="text"
-                    value={userFormData.tcno}
-                    onChange={(e) => setUserFormData({...userFormData, tcno: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    maxLength={11}
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Doğum Tarihi</label>
-                  <input
-                    type="date"
-                    value={userFormData.birthdate}
-                    onChange={(e) => setUserFormData({...userFormData, birthdate: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Plaka</label>
-                  <input
-                    type="text"
-                    value={userFormData.plate}
-                    onChange={(e) => setUserFormData({...userFormData, plate: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Ruhsat Seri No</label>
-                  <input
-                    type="text"
-                    value={userFormData.registration}
-                    onChange={(e) => setUserFormData({...userFormData, registration: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Mülk Türü</label>
-                  <select
-                    value={userFormData.propertyType}
-                    onChange={(e) => setUserFormData({...userFormData, propertyType: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  >
-                    <option value="">Seçiniz</option>
-                    <option value="Ev">Ev</option>
-                    <option value="İşyeri">İşyeri</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-2">Rol</label>
-                  <select
-                    value={userFormData.role}
-                    onChange={(e) => setUserFormData({...userFormData, role: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  >
-                    <option value="user">Kullanıcı</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-gray-700 mb-2">Adres</label>
-                  <textarea
-                    value={userFormData.address}
-                    onChange={(e) => setUserFormData({...userFormData, address: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    rows={3}
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-gray-700 mb-2">Mülk Adresi</label>
-                  <textarea
-                    value={userFormData.propertyAddress}
-                    onChange={(e) => setUserFormData({...userFormData, propertyAddress: e.target.value})}
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                    rows={2}
-                  />
-                </div>
+            <form onSubmit={(e) => { e.preventDefault(); sendQuoteResponse(); }}>
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-2">Müşteri Açıklaması *</label>
+                <textarea
+                  value={responseData.adminResponse}
+                  onChange={(e) => setResponseData({...responseData, adminResponse: e.target.value})}
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  rows={4}
+                  placeholder="Müşteriye gönderilecek açıklama..."
+                  required
+                />
               </div>
 
-              <div className="flex space-x-4 mt-6">
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-2">Fiyat Bilgisi (₺)</label>
+                <input
+                  type="number"
+                  value={responseData.price}
+                  onChange={(e) => setResponseData({...responseData, price: e.target.value})}
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  placeholder="Örn: 1500"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-gray-700 mb-2">Admin Notları (İç Kullanım)</label>
+                <textarea
+                  value={responseData.adminNotes}
+                  onChange={(e) => setResponseData({...responseData, adminNotes: e.target.value})}
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  rows={3}
+                  placeholder="Sadece admin panelinde görünür notlar..."
+                />
+              </div>
+
+              <div className="flex space-x-4">
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
+                  className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
                 >
-                  Güncelle
+                  Cevabı Gönder
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowEditUserModal(false)}
+                  onClick={() => setShowResponseModal(false)}
                   className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
                 >
                   İptal
@@ -1210,7 +671,7 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Kart Bilgileri Modal */}
+      {/* Kart Bilgileri Görüntüleme Modal */}
       {showCardInfoModal && selectedCardQuote && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full">
@@ -1230,8 +691,6 @@ export default function Admin() {
               <h4 className="font-semibold text-blue-800 mb-2">Teklif Bilgileri</h4>
               <div className="text-sm space-y-1">
                 <p><span className="font-medium">Müşteri:</span> {selectedCardQuote.name}</p>
-                <p><span className="font-medium">Telefon:</span> {selectedCardQuote.phone}</p>
-                <p><span className="font-medium">TC No:</span> {selectedCardQuote.tcno}</p>
                 <p><span className="font-medium">Sigorta:</span> {selectedCardQuote.insuranceType}</p>
                 <p><span className="font-medium">Teklif ID:</span> {selectedCardQuote.id}</p>
                 {selectedCardQuote.price && (
@@ -1244,41 +703,21 @@ export default function Admin() {
               <div className="mb-6 p-4 bg-green-50 rounded-lg border">
                 <h4 className="font-semibold text-green-800 mb-3">💳 Kart Bilgileri</h4>
                 <div className="space-y-3 text-sm">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between">
                     <span className="font-medium text-gray-600">Kart Numarası:</span>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono text-gray-800">
-                        {showCardDetails ? selectedCardQuote.paymentInfo.originalCardNumber || selectedCardQuote.paymentInfo.cardNumber : '****-****-****-' + (selectedCardQuote.paymentInfo.originalCardNumber || selectedCardQuote.paymentInfo.cardNumber).slice(-4)}
-                      </span>
-                      {!selectedCardQuote.documentUrl && (
-                        <button
-                          onClick={() => setShowCardDetails(!showCardDetails)}
-                          className="text-blue-600 hover:text-blue-700 text-xs px-2 py-1 border border-blue-300 rounded"
-                        >
-                          {showCardDetails ? 'Gizle' : 'Göster'}
-                        </button>
-                      )}
-                    </div>
+                    <span className="font-mono text-gray-800">{selectedCardQuote.paymentInfo.cardNumber}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="font-medium text-gray-600">Kart Sahibi:</span>
                     <span className="text-gray-800">{selectedCardQuote.paymentInfo.cardHolder}</span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between">
                     <span className="font-medium text-gray-600">Son Kullanma:</span>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono text-gray-800">
-                        {showCardDetails ? selectedCardQuote.paymentInfo.expiryDate : '**/**'}
-                      </span>
-                    </div>
+                    <span className="font-mono text-gray-800">{selectedCardQuote.paymentInfo.expiryDate}</span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between">
                     <span className="font-medium text-gray-600">CVV:</span>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono text-gray-800">
-                        {showCardDetails ? selectedCardQuote.paymentInfo.originalCvv || selectedCardQuote.paymentInfo.cvv : '***'}
-                      </span>
-                    </div>
+                    <span className="font-mono text-gray-800">{selectedCardQuote.paymentInfo.cvv}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="font-medium text-gray-600">Taksit:</span>
@@ -1329,18 +768,14 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Belge Yükleme Modal - Geliştirilmiş versiyon */}
+      {/* Belge Yükleme Modal */}
       {showUploadModal && selectedQuote && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-2xl font-bold text-gray-800">Belge Yükle</h3>
               <button
-                onClick={() => {
-                  setShowUploadModal(false);
-                  setUploadFile(null);
-                  setUploadProgress(0);
-                }}
+                onClick={() => setShowUploadModal(false)}
                 className="text-gray-500 hover:text-gray-700"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1362,79 +797,30 @@ export default function Admin() {
             </div>
 
             <div className="mb-6">
-              <label className="block text-gray-700 mb-2">
-                Belge Dosyası *
-                <span className="text-sm text-gray-500 ml-2">(PDF, Word, JPG, PNG - Max 10MB)</span>
-              </label>
+              <label className="block text-gray-700 mb-2">Belge Dosyası (PDF, DOC, DOCX) *</label>
               <input
                 type="file"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  setUploadFile(file);
-                  
-                  if (file) {
-                    console.log('Seçilen dosya:', {
-                      name: file.name,
-                      type: file.type,
-                      size: file.size,
-                      sizeInMB: (file.size / 1024 / 1024).toFixed(2)
-                    });
-                  }
-                }}
+                accept=".pdf,.doc,.docx"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                 className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
                 required
               />
-              
               {uploadFile && (
-                <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="text-sm space-y-1">
-                    <p><span className="font-medium text-green-800">Dosya:</span> {uploadFile.name}</p>
-                    <p><span className="font-medium text-green-800">Boyut:</span> {(uploadFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                    <p><span className="font-medium text-green-800">Tür:</span> {uploadFile.type}</p>
-                  </div>
+                <div className="mt-2 text-sm text-gray-600">
+                  Seçilen dosya: {uploadFile.name}
                 </div>
               )}
             </div>
 
-            {/* Upload Progress */}
             {uploadProgress > 0 && (
-              <div className="mb-6">
-                <div className="flex justify-between text-sm text-gray-600 mb-1">
-                  <span>Yükleniyor...</span>
-                  <span>{uploadProgress}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
+              <div className="mb-4">
+                <div className="w-full bg-gray-200 rounded-full h-2">
                   <div 
-                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300" 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
                     style={{ width: `${uploadProgress}%` }}
-                  />
+                  ></div>
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {uploadProgress < 30 && "Dosya hazırlanıyor..."}
-                  {uploadProgress >= 30 && uploadProgress < 50 && "Dosya kontrol ediliyor..."}
-                  {uploadProgress >= 50 && uploadProgress < 80 && "Dosya yükleniyor..."}
-                  {uploadProgress >= 80 && uploadProgress < 100 && "Veritabanı güncelleniyor..."}
-                  {uploadProgress >= 100 && "Tamamlandı!"}
-                </div>
-              </div>
-            )}
-
-            {/* Debug bilgileri (sadece development'ta göster) */}
-            {process.env.NODE_ENV === 'development' && uploadFile && (
-              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <h5 className="font-medium text-yellow-800 mb-2">Debug Bilgileri:</h5>
-                <div className="text-xs text-yellow-700 space-y-1">
-                  <p>Storage Path: documents/{selectedQuote.id}/{uploadFile.name}</p>
-                  <p>File Type Check: {[
-                    'application/pdf',
-                    'application/msword',
-                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                    'image/jpeg',
-                    'image/png'
-                  ].includes(uploadFile.type) ? '✅ Valid' : '❌ Invalid'}</p>
-                  <p>Size Check: {uploadFile.size <= 10 * 1024 * 1024 ? '✅ Valid' : '❌ Too Large'}</p>
-                </div>
+                <p className="text-sm text-gray-600 mt-1">Yükleniyor... {uploadProgress}%</p>
               </div>
             )}
 
@@ -1442,9 +828,9 @@ export default function Admin() {
               <button
                 onClick={uploadDocument}
                 disabled={!uploadFile || uploadProgress > 0}
-                className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50"
               >
-                {uploadProgress > 0 ? `Yükleniyor... ${uploadProgress}%` : 'Belgeyi Yükle'}
+                {uploadProgress > 0 ? 'Yükleniyor...' : 'Belgeyi Yükle'}
               </button>
               <button
                 onClick={() => {
@@ -1452,8 +838,7 @@ export default function Admin() {
                   setUploadFile(null);
                   setUploadProgress(0);
                 }}
-                disabled={uploadProgress > 0}
-                className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition disabled:opacity-50"
+                className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
               >
                 İptal
               </button>
@@ -1464,4 +849,3 @@ export default function Admin() {
     </div>
   );
 }
-                  
