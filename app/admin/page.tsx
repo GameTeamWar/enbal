@@ -5,34 +5,12 @@ import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, query, getDocs, doc, getDoc, deleteDoc, updateDoc, onSnapshot, orderBy, addDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-// lib/firebase.js
-import { initializeApp } from "firebase/app";
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyBv89xYNDaxaJO7cDmBVPgsXxQRDXp6Dus",
-  authDomain: "enbal-c028e.firebaseapp.com",
-  projectId: "enbal-c028e",
-  storageBucket: "enbal-c028e.firebasestorage.app",
-  messagingSenderId: "565874833407",
-  appId: "1:565874833407:web:e1e81ff346185a2d8e19ca",
-  measurementId: "G-M4EMGQWC8Z"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-// Servisleri başlat ve export et
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+// Firebase config'i lib/firebase.ts'ten import et
+import { auth, db, storage } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
-export default function Admin() {
+function Admin() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<any[]>([]);
@@ -216,26 +194,56 @@ export default function Admin() {
       return;
     }
 
+    console.log('🔄 Dosya yükleme başlıyor...', {
+      fileName: uploadFile.name,
+      fileSize: uploadFile.size,
+      fileType: uploadFile.type,
+      quoteId: selectedQuote.id
+    });
+
     try {
       setUploadProgress(10);
       
+      // Firebase Storage bağlantısını test et
+      console.log('📦 Storage instance:', storage);
+      console.log('🔗 Storage bucket:', storage.app.options.storageBucket);
+      
+      if (!storage.app.options.storageBucket) {
+        throw new Error('Firebase Storage bucket yapılandırılmamış!');
+      }
+      
       // Firebase Storage'a dosya yükle
-      const storageRef = ref(storage, `documents/${selectedQuote.id}/${uploadFile.name}`);
+      const storageRef = ref(storage, `documents/${selectedQuote.id}/${Date.now()}_${uploadFile.name}`);
+      console.log('📂 Storage ref oluşturuldu:', storageRef.fullPath);
       
-      setUploadProgress(50);
+      setUploadProgress(30);
+      
+      // Dosya yükleme
+      console.log('⬆️ Dosya yükleniyor...');
       const snapshot = await uploadBytes(storageRef, uploadFile);
+      console.log('✅ Dosya yüklendi:', snapshot.ref.fullPath);
       
-      setUploadProgress(80);
+      setUploadProgress(70);
+      
+      // Download URL alma
+      console.log('🔗 Download URL alınıyor...');
       const downloadURL = await getDownloadURL(snapshot.ref);
+      console.log('✅ Download URL alındı:', downloadURL);
+      
+      setUploadProgress(90);
       
       // Firestore'u güncelle
+      console.log('💾 Firestore güncelleniyor...');
       await updateDoc(doc(db, 'quotes', selectedQuote.id), {
         documentUrl: downloadURL,
         documentName: uploadFile.name,
+        documentPath: snapshot.ref.fullPath, // Storage path'i de kaydet
         awaitingProcessing: false,
         documentUploadDate: new Date(),
         customerStatus: 'completed'
       });
+      
+      console.log('✅ Firestore güncellendi');
 
       // Kullanıcıya belge hazır bildirimi gönder
       await sendUserNotification(selectedQuote.userId, {
@@ -248,14 +256,57 @@ export default function Admin() {
 
       setUploadProgress(100);
       toast.success('Belge başarıyla yüklendi!');
-      setShowUploadModal(false);
-      setSelectedQuote(null);
-      setUploadFile(null);
+      
+      // Modal'ı kapat ve state'i temizle
+      setTimeout(() => {
+        setShowUploadModal(false);
+        setSelectedQuote(null);
+        setUploadFile(null);
+        setUploadProgress(0);
+      }, 1000);
+      
+    } catch (error: any) {
+      console.error('❌ Belge yükleme hatası:', error);
+      
+      // Detaylı hata mesajları
+      let errorMessage = 'Belge yüklenemedi!';
+      
+      if (error.code) {
+        switch (error.code) {
+          case 'storage/unauthorized':
+            errorMessage = 'Storage yetkilendirme hatası! Firebase kurallarını kontrol edin.';
+            break;
+          case 'storage/canceled':
+            errorMessage = 'Dosya yükleme iptal edildi.';
+            break;
+          case 'storage/unknown':
+            errorMessage = 'Bilinmeyen storage hatası! Ağ bağlantınızı kontrol edin.';
+            break;
+          case 'storage/invalid-format':
+            errorMessage = 'Geçersiz dosya formatı!';
+            break;
+          case 'storage/invalid-checksum':
+            errorMessage = 'Dosya bozuk! Lütfen tekrar deneyin.';
+            break;
+          default:
+            errorMessage = `Storage hatası: ${error.code}`;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage);
       setUploadProgress(0);
-    } catch (error) {
-      toast.error('Belge yüklenemedi!');
-      console.error(error);
-      setUploadProgress(0);
+      
+      // Debug için detaylı log
+      console.error('Hata detayları:', {
+        code: error.code,
+        message: error.message,
+        stack: error.stack,
+        storageBucket: storage.app.options.storageBucket,
+        fileName: uploadFile.name,
+        fileSize: uploadFile.size
+      });
     }
   };
 
@@ -288,7 +339,7 @@ export default function Admin() {
     if (!userId) return;
 
     try {
-      // Firestore'a bildirim kaydet
+      // 1. Firestore'a bildirim kaydet (normal bildirim)
       await addDoc(collection(db, 'notifications'), {
         userId,
         ...notificationData,
@@ -296,19 +347,60 @@ export default function Admin() {
         createdAt: new Date()
       });
 
-      // API bildirimi gönder
-      await fetch('/api/user-notification', {
+      // 2. Browser notification tetikle (real-time sistem için)
+      await fetch('/api/trigger-browser-notification', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           userId,
-          ...notificationData
+          title: getNotificationTitle(notificationData.type),
+          body: getNotificationMessage(notificationData),
+          type: notificationData.type,
+          quoteId: notificationData.quoteId,
+          insuranceType: notificationData.insuranceType
         }),
       });
+
+      console.log('✅ Kullanıcı bildirimi gönderildi (Browser + Database)');
     } catch (error) {
-      console.error('Kullanıcı bildirimi gönderilemedi:', error);
+      console.error('❌ Kullanıcı bildirimi gönderilemedi:', error);
+    }
+  };
+
+  // Bildirim başlığı oluştur
+  const getNotificationTitle = (type: string): string => {
+    switch (type) {
+      case 'quote_response':
+        return '📋 Teklif Cevabı Geldi!';
+      case 'quote_rejected':
+        return '❌ Teklif Reddedildi';
+      case 'document_ready':
+        return '📄 Belgeleriniz Hazır!';
+      default:
+        return '🔔 Enbal Sigorta';
+    }
+  };
+
+  // Bildirim mesajı oluştur
+  const getNotificationMessage = (notificationData: any): string => {
+    switch (notificationData.type) {
+      case 'quote_response':
+        return `${notificationData.insuranceType} sigortası teklifiniz cevaplandı. ${
+          notificationData.price ? `Fiyat: ${new Intl.NumberFormat('tr-TR', { 
+            style: 'currency', 
+            currency: 'TRY' 
+          }).format(parseFloat(notificationData.price))}` : ''
+        }`;
+      case 'quote_rejected':
+        return `${notificationData.insuranceType} sigortası teklifiniz reddedildi. ${
+          notificationData.reason ? `Sebep: ${notificationData.reason}` : ''
+        }`;
+      case 'document_ready':
+        return `${notificationData.insuranceType} sigortası belgeleriniz hazır! Hemen indirin.`;
+      default:
+        return notificationData.message || 'Yeni bildiriminiz var';
     }
   };
 
@@ -350,6 +442,40 @@ export default function Admin() {
     );
   };
 
+  // Firebase Storage test fonksiyonu
+  const testFirebaseStorage = async () => {
+    try {
+      console.log('🔄 Firebase Storage test başlıyor...');
+      
+      // Test file oluştur
+      const testContent = new Blob(['Test file content'], { type: 'text/plain' });
+      const testFile = new File([testContent], 'test.txt', { type: 'text/plain' });
+      
+      // Storage ref oluştur
+      const testRef = ref(storage, `test/${Date.now()}_test.txt`);
+      
+      console.log('📦 Storage config:', {
+        bucket: storage.app.options.storageBucket,
+        projectId: storage.app.options.projectId,
+        path: testRef.fullPath
+      });
+      
+      // Test upload
+      const snapshot = await uploadBytes(testRef, testFile);
+      console.log('✅ Test upload başarılı:', snapshot.ref.fullPath);
+      
+      // Download URL al
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      console.log('✅ Download URL alındı:', downloadURL);
+      
+      toast.success('Firebase Storage çalışıyor! ✅');
+      
+    } catch (error: any) {
+      console.error('❌ Firebase Storage test hatası:', error);
+      toast.error(`Storage test hatası: ${error.code || error.message}`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -385,6 +511,16 @@ export default function Admin() {
             </div>
             
             <div className="flex items-center space-x-4">
+              <button
+                onClick={testFirebaseStorage}
+                className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200"
+                title="Firebase Storage Test"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+
               <button
                 onClick={() => setAudioEnabled(!audioEnabled)}
                 className={`p-2 rounded-lg ${audioEnabled ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'}`}
@@ -520,7 +656,7 @@ export default function Admin() {
                             title="WhatsApp ile iletişim"
                           >
                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.886 3.75"/>
+                             <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.886 3.75"/>
                             </svg>
                           </button>
                         </div>
@@ -705,7 +841,7 @@ export default function Admin() {
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between">
                     <span className="font-medium text-gray-600">Kart Numarası:</span>
-                    <span className="font-mono text-gray-800">{selectedCardQuote.paymentInfo.cardNumber}</span>
+                    <span className="font-mono text-gray-800">{selectedCardQuote.paymentInfo.originalCardNumber || selectedCardQuote.paymentInfo.cardNumber}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="font-medium text-gray-600">Kart Sahibi:</span>
@@ -717,7 +853,7 @@ export default function Admin() {
                   </div>
                   <div className="flex justify-between">
                     <span className="font-medium text-gray-600">CVV:</span>
-                    <span className="font-mono text-gray-800">{selectedCardQuote.paymentInfo.cvv}</span>
+                    <span className="font-mono text-gray-800">{selectedCardQuote.paymentInfo.originalCvv || selectedCardQuote.paymentInfo.cvv}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="font-medium text-gray-600">Taksit:</span>
@@ -849,3 +985,6 @@ export default function Admin() {
     </div>
   );
 }
+
+// Export the component as default
+export default Admin;
