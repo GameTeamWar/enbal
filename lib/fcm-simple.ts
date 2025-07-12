@@ -1,120 +1,248 @@
-// lib/fcm-simple.ts - Basitleştirilmiş FCM Test
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+// lib/simple-notifications.ts - FCM olmadan basit notification sistemi
+
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-const vapidKey = 'O3z6guGvKPxlDyZTAriwuwYFqCGcSOubgJ6TR2FHF1k';
+// Interface for notification data
+interface NotificationData {
+  title: string;
+  body: string;
+  icon?: string;
+  tag?: string;
+  data?: any;
+}
 
-export const setupFCMSimple = async (userId: string) => {
-  console.log('🔄 FCM Setup başladı...');
-  
-  if (typeof window === 'undefined') {
-    console.log('❌ Browser environment değil');
-    return null;
+// Browser notification wrapper
+export class SimpleNotificationManager {
+  private static instance: SimpleNotificationManager;
+  private userId: string | null = null;
+  private checkInterval: NodeJS.Timeout | null = null;
+
+  static getInstance(): SimpleNotificationManager {
+    if (!SimpleNotificationManager.instance) {
+      SimpleNotificationManager.instance = new SimpleNotificationManager();
+    }
+    return SimpleNotificationManager.instance;
   }
 
-  try {
-    // 1. Service Worker registration
-    console.log('📝 Service Worker registering...');
-    if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-      console.log('✅ Service Worker registered:', registration);
+  // Notification izni alma
+  async requestPermission(): Promise<boolean> {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      console.log('❌ Browser notification desteklemiyor');
+      return false;
     }
 
-    // 2. Notification permission
-    console.log('🔔 Notification permission requesting...');
-    const permission = await Notification.requestPermission();
-    console.log('📋 Permission result:', permission);
-    
-    if (permission !== 'granted') {
-      console.log('❌ Notification permission denied');
-      return null;
+    try {
+      const permission = await Notification.requestPermission();
+      console.log('📋 Notification permission:', permission);
+      return permission === 'granted';
+    } catch (error) {
+      console.error('Notification permission error:', error);
+      return false;
     }
+  }
 
-    // 3. Get messaging instance
-    console.log('🔥 Getting Firebase messaging...');
-    const messaging = getMessaging();
-    console.log('✅ Messaging instance created');
+  // Kullanıcı için notification sistemi kurma
+  async setupForUser(userId: string): Promise<boolean> {
+    this.userId = userId;
 
-    // 4. Get FCM token
-    console.log('🎫 Getting FCM token...');
-    console.log('🔑 Using VAPID key:', vapidKey);
-    
-    const token = await getToken(messaging, { vapidKey });
-    
-    if (token) {
-      console.log('✅ FCM Token alındı:', token);
-      
-      // 5. Save to Firestore
+    try {
+      const hasPermission = await this.requestPermission();
+      if (!hasPermission) {
+        throw new Error('Notification permission denied');
+      }
+
+      // Kullanıcı için notification aktif olduğunu işaretle
       await updateDoc(doc(db, 'users', userId), {
-        fcmToken: token,
-        fcmTokenUpdated: new Date(),
-        notificationsEnabled: true
+        browserNotificationsEnabled: true,
+        notificationSetupDate: new Date()
       });
+
+      // Periyodik kontrol başlat (Real-time yerine polling)
+      this.startPolling(userId);
+
+      console.log('✅ Simple notification system aktif edildi');
+      return true;
+    } catch (error) {
+      console.error('Notification setup error:', error);
+      throw error;
+    }
+  }
+
+  // Bildirim polling sistemi (Real-time Firestore dinleme yerine)
+  private startPolling(userId: string) {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+    }
+
+    // Her 30 saniyede bir notification kontrol et
+    this.checkInterval = setInterval(async () => {
+      await this.checkForNewNotifications(userId);
+    }, 30000);
+
+    console.log('🔄 Notification polling started');
+  }
+
+  // Yeni bildirimleri kontrol et
+  private async checkForNewNotifications(userId: string) {
+    try {
+      const response = await fetch('/api/check-notifications', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      const result = await response.json();
       
-      console.log('💾 Token Firestore\'a kaydedildi');
-      
-      // 6. Listen for foreground messages
-      onMessage(messaging, (payload) => {
-        console.log('📨 Foreground message received:', payload);
-        
-        if (payload.notification && Notification.permission === 'granted') {
-          new Notification(payload.notification.title || 'Enbal Sigorta', {
-            body: payload.notification.body,
-            icon: '/favicon.ico'
-          });
+      if (result.newNotifications && result.newNotifications.length > 0) {
+        for (const notification of result.newNotifications) {
+          this.showNotification(notification);
         }
+      }
+    } catch (error) {
+      console.error('❌ Notification check error:', error);
+    }
+  }
+
+  // Browser notification göster
+  showNotification(data: NotificationData) {
+    if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') {
+      console.log('❌ Notifications not available or permission not granted');
+      return;
+    }
+    
+    try {
+      const notification = new Notification(data.title, {
+        body: data.body,
+        icon: data.icon || '/favicon.ico',
+        badge: '/favicon.ico',
+        tag: data.tag || 'enbal-notification',
+        requireInteraction: true,
+        data: data.data
       });
-      
-      return token;
-    } else {
-      console.log('❌ FCM token alınamadı');
-      return null;
+
+      notification.onclick = () => {
+        window.focus();
+        if (data.data?.url) {
+          window.location.href = data.data.url;
+        } else {
+          window.location.href = '/my-quotes';
+        }
+        notification.close();
+      };
+
+      // 10 saniye sonra otomatik kapat
+      setTimeout(() => {
+        notification.close();
+      }, 10000);
+
+      console.log('📨 Notification gösterildi:', data.title);
+    } catch (error) {
+      console.error('Notification display error:', error);
     }
-    
+  }
+
+  // Test notification
+  showTestNotification() {
+    this.showNotification({
+      title: '🎉 Test Bildirimi',
+      body: 'Browser notification sistemi çalışıyor!',
+      icon: '/favicon.ico',
+      tag: 'test-notification'
+    });
+  }
+
+  // Notification sistemini kapat
+  async disable(userId: string) {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
+
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        browserNotificationsEnabled: false,
+        notificationDisabledDate: new Date()
+      });
+
+      console.log('❌ Notification system disabled');
+    } catch (error) {
+      console.error('Notification disable error:', error);
+      throw error;
+    }
+  }
+
+  // Polling durdur
+  stopPolling() {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+      console.log('🛑 Notification polling stopped');
+    }
+  }
+}
+
+// Kolay kullanım için wrapper fonksiyonlar
+export const setupSimpleNotifications = async (userId: string): Promise<boolean> => {
+  try {
+    const manager = SimpleNotificationManager.getInstance();
+    return await manager.setupForUser(userId);
   } catch (error) {
-    console.error('💥 FCM Setup Error:', error);
-    
-    // Detailed error logging
-    if (error instanceof Error) {
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
-      
-      if (error.message.includes('messaging/token-subscribe-failed')) {
-        console.error('🔑 VAPID key problemi olabilir');
-      }
-      if (error.message.includes('messaging/permission-blocked')) {
-        console.error('🚫 Notifications blocked by user');
-      }
-    }
-    
-    return null;
+    console.error('Setup simple notifications error:', error);
+    return false;
   }
 };
 
-export const testNotificationSimple = async (userId: string) => {
-  console.log('📤 Test notification gönderiliyor...');
-  
+export const showTestNotification = () => {
   try {
-    const response = await fetch('/api/web-push-notification', {
+    const manager = SimpleNotificationManager.getInstance();
+    manager.showTestNotification();
+  } catch (error) {
+    console.error('Show test notification error:', error);
+  }
+};
+
+export const disableNotifications = async (userId: string) => {
+  try {
+    const manager = SimpleNotificationManager.getInstance();
+    await manager.disable(userId);
+  } catch (error) {
+    console.error('Disable notifications error:', error);
+  }
+};
+
+// Instant notification gönder (Server-side'dan tetiklenir)
+export const sendInstantNotification = async (userId: string, notificationData: {
+  title: string;
+  body: string;
+  type: string;
+}) => {
+  try {
+    const response = await fetch('/api/send-instant-notification', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         userId,
-        title: '🎉 Test Bildirimi',
-        body: 'FCM sistemi çalışıyor!',
-        icon: '/favicon.ico'
+        ...notificationData
       }),
     });
 
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
     const result = await response.json();
-    console.log('📬 Test notification result:', result);
-    
     return result;
-  } catch (error) {
-    console.error('💥 Test notification error:', error);
+  } catch (error: any) {
+    console.error('❌ Instant notification error:', error);
     return { success: false, error: error.message };
   }
 };

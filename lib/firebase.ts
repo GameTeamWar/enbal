@@ -10,7 +10,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyBv89xYNDaxaJO7cDmBVPgsXxQRDXp6Dus",
   authDomain: "enbal-c028e.firebaseapp.com",
   projectId: "enbal-c028e",
-  storageBucket: "enbal-c028e.firebasestorage.app",
+  storageBucket: "enbal-c028e.appspot.com", // Fixed storage bucket URL
   messagingSenderId: "565874833407",
   appId: "1:565874833407:web:e1e81ff346185a2d8e19ca",
   measurementId: "G-M4EMGQWC8Z"
@@ -26,8 +26,15 @@ export const storage = getStorage(app);
 
 // Initialize messaging only in browser environment
 export const getMessagingInstance = async () => {
-  if (typeof window !== 'undefined' && await isSupported()) {
-    return getMessaging(app);
+  if (typeof window !== 'undefined') {
+    try {
+      const isMessagingSupported = await isSupported();
+      if (isMessagingSupported) {
+        return getMessaging(app);
+      }
+    } catch (error) {
+      console.error('Messaging not supported:', error);
+    }
   }
   return null;
 };
