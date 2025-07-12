@@ -49,7 +49,7 @@ export default function Admin() {
   const [showCardDetails, setShowCardDetails] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
 
-  const notificationSound = typeof Audio !== 'undefined' ? new Audio('/notification-sound.mp3') : null;
+  const notificationSound = typeof Audio !== 'undefined' ? new Audio('/nsound.mp3') : null;
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
