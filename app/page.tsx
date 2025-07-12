@@ -11,13 +11,13 @@ export default function Home() {
   const [currentCompanySlide, setCurrentCompanySlide] = useState(0);
 
   const companies = [
-  { name: 'Atlas', logo: '/logos/atlas.png' },
-  { name: 'Hepiyi', logo: '/logos/hepiyi.png' },
-  { name: 'Koru', logo: '/logos/koru.png' },
-  { name: 'Orient', logo: '/logos/orient.png' },
-  { name: 'Quick', logo: '/logos/quick.png' },
-  { name: 'Sompo', logo: '/logos/sompo.png' },
-  { name: 'TürkNipon', logo: '/logos/türknipon.png' }
+  { name: '', logo: '/logos/atlas.png' },
+  { name: '', logo: '/logos/hepiyi.png' },
+  { name: '', logo: '/logos/koru.png' },
+  { name: '', logo: '/logos/orient.png' },
+  { name: '', logo: '/logos/quick.png' },
+  { name: '', logo: '/logos/sompo.png' },
+  { name: '', logo: '/logos/türknipon.png' }
 ];
 
   useEffect(() => {

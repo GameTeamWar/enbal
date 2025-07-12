@@ -318,6 +318,28 @@ export default function Profile() {
                 <h2 className="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Kişisel Bilgiler</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
+                    <label className="block text-gray-700 mb-2">İsim</label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-700 mb-2">Soyisim</label>
+                    <input
+                      type="text"
+                      value={formData.surname}
+                      onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
+                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
                     <label className="block text-gray-700 mb-2">TC Kimlik No</label>
                     <input
                       type="text"
@@ -423,3 +445,4 @@ export default function Profile() {
       </div>
     </>
   );
+}
