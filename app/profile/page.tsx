@@ -5,7 +5,12 @@ import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { setupFCM, sendTestNotification } from '@/lib/fcm';
+import { 
+  setupSimpleNotifications, 
+  showTestNotification, 
+  disableNotifications, 
+  getNotificationStatus 
+} from '@/lib/simple-notifications';
 import toast from 'react-hot-toast';
 import Navbar from '@/app/components/Navbar';
 
@@ -13,7 +18,11 @@ export default function Profile() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
-  const [fcmEnabled, setFcmEnabled] = useState(false);
+  const [notificationStatus, setNotificationStatus] = useState<any>({
+    permission: 'default',
+    isSetup: false,
+    isListening: false
+  });
   const [formData, setFormData] = useState({
     name: '',
     surname: '',
@@ -49,12 +58,17 @@ export default function Profile() {
             propertyAddress: userData.propertyAddress || ''
           });
           
-          // FCM durumu kontrol et
-          setFcmEnabled(!!userData.fcmToken);
+          // Notification durumunu kontrol et
+          updateNotificationStatus();
           
-          // FCM setup (otomatik)
-          if (userData.fcmToken || Notification.permission === 'granted') {
-            setupFCMForUser(authUser.uid);
+          // Eğer bildirimler daha önce aktifse, sistemi otomatik başlat
+          if (userData.browserNotificationsEnabled) {
+            try {
+              await setupSimpleNotifications(authUser.uid);
+              updateNotificationStatus();
+            } catch (error) {
+              console.log('Otomatik notification setup başarısız:', error);
+            }
           }
         }
       } else {
@@ -66,16 +80,9 @@ export default function Profile() {
     return () => unsubscribe();
   }, [router]);
 
-  const setupFCMForUser = async (userId: string) => {
-    try {
-      const token = await setupFCM(userId);
-      if (token) {
-        setFcmEnabled(true);
-        toast.success('Push bildirimleri aktif edildi!');
-      }
-    } catch (error) {
-      console.error('FCM setup error:', error);
-    }
+  const updateNotificationStatus = () => {
+    const status = getNotificationStatus();
+    setNotificationStatus(status);
   };
 
   const handleUpdate = async (e: React.FormEvent) => {
@@ -93,10 +100,10 @@ export default function Profile() {
     if (!user) return;
     
     try {
-      const token = await setupFCM(user.uid);
-      if (token) {
-        setFcmEnabled(true);
-        toast.success('Push bildirimleri aktif edildi!');
+      const success = await setupSimpleNotifications(user.uid);
+      if (success) {
+        updateNotificationStatus();
+        toast.success('🎉 Browser bildirimleri aktif edildi!');
       } else {
         toast.error('Bildirim izni verilmedi!');
       }
@@ -106,18 +113,12 @@ export default function Profile() {
     }
   };
 
-  const handleTestNotification = async () => {
-    if (!user) return;
-    
+  const handleTestNotification = () => {
     try {
-      const result = await sendTestNotification(user.uid);
-      if (result?.success) {
-        toast.success('Test bildirimi gönderildi!');
-      } else {
-        toast.error('Test bildirimi gönderilemedi!');
-      }
+      showTestNotification();
+      toast.success('Test bildirimi gönderildi!');
     } catch (error) {
-      toast.error('Test bildirimi hatası!');
+      toast.error('Test bildirimi gönderilemedi!');
       console.error(error);
     }
   };
@@ -126,16 +127,42 @@ export default function Profile() {
     if (!user) return;
     
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        fcmToken: null,
-        fcmTokenUpdated: new Date()
-      });
-      setFcmEnabled(false);
-      toast.success('Push bildirimleri kapatıldı!');
+      await disableNotifications(user.uid);
+      updateNotificationStatus();
+      toast.success('Browser bildirimleri kapatıldı!');
     } catch (error) {
       toast.error('Bildirim kapatılamadı!');
       console.error(error);
     }
+  };
+
+  const getNotificationStatusText = () => {
+    if (notificationStatus.permission === 'unsupported') {
+      return '❌ Tarayıcınız bildirim desteklemiyor';
+    }
+    if (notificationStatus.permission === 'denied') {
+      return '🚫 Bildirimler engellenmiş (Tarayıcı ayarlarından açın)';
+    }
+    if (notificationStatus.permission === 'granted' && notificationStatus.isSetup && notificationStatus.isListening) {
+      return '✅ Aktif - Real-time dinleniyor';
+    }
+    if (notificationStatus.permission === 'granted' && notificationStatus.isSetup) {
+      return '⚠️ Aktif ama dinlenmiyor';
+    }
+    if (notificationStatus.permission === 'granted') {
+      return '⏳ İzin verildi, kurulum gerekli';
+    }
+    return '❌ Pasif';
+  };
+
+  const getNotificationStatusColor = () => {
+    if (notificationStatus.permission === 'granted' && notificationStatus.isSetup && notificationStatus.isListening) {
+      return 'text-green-600';
+    }
+    if (notificationStatus.permission === 'granted') {
+      return 'text-yellow-600';
+    }
+    return 'text-red-600';
   };
 
   if (loading) {
@@ -162,54 +189,126 @@ export default function Profile() {
               <h1 className="text-3xl font-bold text-gray-800">Profilim</h1>
             </div>
 
-            {/* Bildirim Ayarları */}
-            <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl border">
+            {/* Bildirim Ayarları - Gelişmiş Versiyon */}
+            <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl border-2 border-blue-100">
               <h2 className="text-xl font-semibold text-gray-700 mb-4 flex items-center">
                 <svg className="w-6 h-6 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-3.405-3.405A2.032 2.032 0 0118 12V9a6.002 6.002 0 00-4-5.659V3a2 2 0 10-4 0v.341C7.67 4.165 6 6.388 6 9v3c0 .601-.216 1.182-.595 1.595L2 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
-                Push Bildirimleri
+                Browser Bildirimleri (Gelişmiş Sistem)
               </h2>
               
-              <div className="flex items-center justify-between">
+              <div className="space-y-4">
                 <div>
-                  <p className="text-gray-600">
-                    Teklif durumunuz ve önemli güncellemeler hakkında anlık bildirim alın
+                  <p className="text-gray-600 text-sm">
+                    Teklif durumunuz hakkında anlık browser bildirimleri alın. 
+                    Real-time sistem ile hemen haberdar olun!
                   </p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Durum: {fcmEnabled ? (
-                      <span className="text-green-600 font-medium">✅ Aktif</span>
-                    ) : (
-                      <span className="text-red-600 font-medium">❌ Pasif</span>
-                    )}
+                  <p className={`text-sm font-medium mt-2 ${getNotificationStatusColor()}`}>
+                    Durum: {getNotificationStatusText()}
                   </p>
+                </div>
+
+                {/* Bildirim Detay Durumu */}
+                <div className="bg-white bg-opacity-50 rounded-lg p-3 text-xs">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="font-medium">Permission:</span> 
+                      <span className={`ml-1 ${
+                        notificationStatus.permission === 'granted' ? 'text-green-600' : 
+                        notificationStatus.permission === 'denied' ? 'text-red-600' : 
+                        'text-yellow-600'
+                      }`}>
+                        {notificationStatus.permission}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-medium">Setup:</span> 
+                      <span className={`ml-1 ${notificationStatus.isSetup ? 'text-green-600' : 'text-red-600'}`}>
+                        {notificationStatus.isSetup ? 'Evet' : 'Hayır'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-medium">Dinleme:</span> 
+                      <span className={`ml-1 ${notificationStatus.isListening ? 'text-green-600' : 'text-red-600'}`}>
+                        {notificationStatus.isListening ? 'Aktif' : 'Pasif'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-medium">Tarayıcı:</span> 
+                      <span className={`ml-1 ${notificationStatus.permission !== 'unsupported' ? 'text-green-600' : 'text-red-600'}`}>
+                        {notificationStatus.permission !== 'unsupported' ? 'Destekliyor' : 'Desteklemiyor'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 
-                <div className="flex space-x-3">
-                  {!fcmEnabled ? (
-                    <button
-                      onClick={handleEnableNotifications}
-                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
-                    >
-                      Aktif Et
-                    </button>
-                  ) : (
-                    <>
+                <div className="flex items-center justify-between">
+                  <div className="flex space-x-3">
+                    {!notificationStatus.isSetup || !notificationStatus.isListening ? (
                       <button
-                        onClick={handleTestNotification}
-                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                        onClick={handleEnableNotifications}
+                        disabled={notificationStatus.permission === 'unsupported'}
+                        className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                       >
-                        Test Et
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-3.405-3.405A2.032 2.032 0 0118 12V9a6.002 6.002 0 00-4-5.659V3a2 2 0 10-4 0v.341C7.67 4.165 6 6.388 6 9v3c0 .601-.216 1.182-.595 1.595L2 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                        <span>Aktif Et</span>
                       </button>
-                      <button
-                        onClick={handleDisableNotifications}
-                        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
-                      >
-                        Kapat
-                      </button>
-                    </>
-                  )}
+                    ) : (
+                      <>
+                        <button
+                          onClick={handleTestNotification}
+                          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center space-x-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                          </svg>
+                          <span>Test Et</span>
+                        </button>
+                        <button
+                          onClick={handleDisableNotifications}
+                          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center space-x-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                          </svg>
+                          <span>Kapat</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Durumu yenile butonu */}
+                  <button
+                    onClick={updateNotificationStatus}
+                    className="px-3 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition text-sm"
+                    title="Durumu Yenile"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
                 </div>
+
+                {/* Tarayıcı uyarısı */}
+                {notificationStatus.permission === 'denied' && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm">
+                    <div className="flex items-start">
+                      <svg className="w-5 h-5 text-yellow-600 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <div>
+                        <p className="text-yellow-800 font-medium">Bildirimler Engellenmiş</p>
+                        <p className="text-yellow-700 mt-1">
+                          Tarayıcınızın adres çubuğundaki bildirim simgesini tıklayarak 
+                          "Bildirimlere İzin Ver" seçeneğini aktif edin.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -218,28 +317,6 @@ export default function Profile() {
               <div className="mb-8">
                 <h2 className="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Kişisel Bilgiler</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-gray-700 mb-2">İsim</label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-gray-700 mb-2">Soyisim</label>
-                    <input
-                      type="text"
-                      value={formData.surname}
-                      onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
-                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                      required
-                    />
-                  </div>
-
                   <div>
                     <label className="block text-gray-700 mb-2">TC Kimlik No</label>
                     <input
@@ -346,4 +423,3 @@ export default function Profile() {
       </div>
     </>
   );
-}
