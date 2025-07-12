@@ -199,20 +199,22 @@ export default function MyQuotes() {
     }
 
     try {
-      const response = await fetch(quote.documentUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${quote.insuranceType}_${quote.id}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      // Directly open the URL in a new tab instead of fetching
+      // This avoids CORS issues with Firebase Storage
+      window.open(quote.documentUrl, '_blank');
+      toast.success('Belge açılıyor...');
       
-      toast.success('Belge indiriliyor...');
+      // Alternative: Create a hidden anchor element and trigger download
+      // const a = document.createElement('a');
+      // a.href = quote.documentUrl;
+      // a.download = `${quote.insuranceType}_${quote.id}.pdf`;
+      // a.target = '_blank';
+      // document.body.appendChild(a);
+      // a.click();
+      // document.body.removeChild(a);
+      
     } catch (error) {
-      toast.error('Belge indirilemedi!');
+      toast.error('Belge açılamadı!');
       console.error(error);
     }
   };

@@ -45,7 +45,7 @@ export default function Hero() {
             <div className="lg:w-1/2 relative">
               <div className="animate-pulse">
                 <img 
-                  src="https://img.freepik.com/free-vector/insurance-services-concept-illustration_114360-7726.jpg" 
+                  src="https://img.freepik.com/premium-vector/3d-open-cardboard-box-with-home-goods-isolated_169241-10498.jpghttps://img.freepik.com/premium-vector/3d-arrow-people-business-growth-development-trade-rise-up-icon-graphic-sale-chart-render-happy-man-woman-stock-exchange-market-graph-joyful-couple-clouds-vector-background_440128-3227.jpg" 
                   alt="Sigorta" 
                   className="w-full max-w-lg mx-auto rounded-lg shadow-2xl"
                 />
