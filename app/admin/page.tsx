@@ -629,6 +629,9 @@ function Admin() {
     setShowDetailsModal(true);
   };
 
+  // Eksik fonksiyon: Belge yükleme modalını aç
+  // (Kaldırıldı - duplicate declaration)
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">

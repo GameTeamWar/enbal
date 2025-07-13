@@ -213,29 +213,29 @@ export default function Profile() {
                 <div className="bg-white bg-opacity-50 rounded-lg p-3 text-xs">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <span className="font-medium">Permission:</span> 
+                      <span className="font-medium text-black">İZİN:</span> 
                       <span className={`ml-1 ${
-                        notificationStatus.permission === 'granted' ? 'text-green-600' : 
-                        notificationStatus.permission === 'denied' ? 'text-red-600' : 
+                        notificationStatus.permission === 'Ok' ? 'text-green-600' : 
+                        notificationStatus.permission === 'NO' ? 'text-red-600' : 
                         'text-yellow-600'
                       }`}>
                         {notificationStatus.permission}
                       </span>
                     </div>
                     <div>
-                      <span className="font-medium">Setup:</span> 
+                      <span className="font-medium text-black">Setup:</span> 
                       <span className={`ml-1 ${notificationStatus.isSetup ? 'text-green-600' : 'text-red-600'}`}>
                         {notificationStatus.isSetup ? 'Evet' : 'Hayır'}
                       </span>
                     </div>
                     <div>
-                      <span className="font-medium">Dinleme:</span> 
+                      <span className="font-medium text-black">Dinleme:</span> 
                       <span className={`ml-1 ${notificationStatus.isListening ? 'text-green-600' : 'text-red-600'}`}>
                         {notificationStatus.isListening ? 'Aktif' : 'Pasif'}
                       </span>
                     </div>
                     <div>
-                      <span className="font-medium">Tarayıcı:</span> 
+                      <span className="font-medium text-black">Tarayıcı:</span> 
                       <span className={`ml-1 ${notificationStatus.permission !== 'unsupported' ? 'text-green-600' : 'text-red-600'}`}>
                         {notificationStatus.permission !== 'unsupported' ? 'Destekliyor' : 'Desteklemiyor'}
                       </span>
