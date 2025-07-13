@@ -582,18 +582,16 @@ function Admin() {
     return cardNumber.replace(/(\d{4})(?=\d)/g, '$1 ');
   };
 
-  const maskCardNumber = (cardNumber: string) => {
-    if (!cardNumber) return '';
-    const cleanNumber = cardNumber.replace(/\s/g, '');
-    if (cleanNumber.length >= 4) {
-      return '**** **** **** ' + cleanNumber.slice(-4);
-    }
-    return cardNumber;
-  };
+  // KALDIRILAN: maskCardNumber ve maskCVV fonksiyonları - artık kart bilgileri açık görünecek
 
-  const maskCVV = (cvv: string) => {
-    if (!cvv) return '';
-    return '***';
+  // YENİ FONKSİYON: Kopyala fonksiyonu
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} kopyalandı!`);
+    } catch (error) {
+      toast.error('Kopyalama başarısız!');
+    }
   };
 
   const testFirebaseStorage = async () => {
@@ -725,7 +723,7 @@ function Admin() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b">
+                  <tr className="border-b bg-gray-100 text-gray-600">
                     <th className="text-left py-3 px-4">Tarih</th>
                     <th className="text-left py-3 px-4">Müşteri</th>
                     <th className="text-left py-3 px-4">Sigorta Türü</th>
@@ -735,7 +733,7 @@ function Admin() {
                     <th className="text-left py-3 px-4">İşlemler</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody  className="text-gray-700">
                   {quotes.map((quote) => (
                     <tr key={quote.id} className={`border-b ${
                       quote.status === 'pending' ? 'bg-yellow-50' : 
@@ -796,15 +794,7 @@ function Admin() {
                             <>
                               {!quote.documentUrl ? (
                                 <>
-                                  <button
-                                    onClick={() => handleCardInfo(quote)}
-                                    className="text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1"
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                                    </svg>
-                                    <span>Kart Bilgilerini Gör</span>
-                                  </button>
+                              
                                   <button
                                     onClick={() => handleDocumentUpload(quote)}
                                     className="text-green-600 hover:text-green-800 font-medium"
@@ -986,7 +976,7 @@ function Admin() {
                     </svg>
                     📋 Teklif Bilgileri
                   </h4>
-                  <div className="space-y-3">
+                  <div className="space-y-3 text-gray-700">
                     <div className="flex justify-between">
                       <span className="font-medium text-gray-600">Teklif ID:</span>
                       <code className="bg-blue-200 px-2 py-1 rounded text-sm">{selectedQuote.id}</code>
@@ -1028,7 +1018,7 @@ function Admin() {
                     </svg>
                     👤 Müşteri Bilgileri
                   </h4>
-                  <div className="space-y-3">
+                  <div className="space-y-3 text-gray-700">
                     <div className="flex justify-between">
                       <span className="font-medium text-gray-600">İsim Soyisim:</span>
                       <span className="font-semibold">{selectedQuote.name || 'Belirtilmemiş'}</span>
@@ -1069,7 +1059,7 @@ function Admin() {
                       </svg>
                       {selectedQuote.plate || selectedQuote.registration ? '🚗 Araç Bilgileri' : '🏠 Mülk Bilgileri'}
                     </h4>
-                    <div className="space-y-3">
+                    <div className="space-y-3 text-gray-700">
                       {selectedQuote.plate && (
                         <div className="flex justify-between">
                           <span className="font-medium text-gray-600">Plaka:</span>
@@ -1163,74 +1153,177 @@ function Admin() {
 
                 {/* Ödeme Bilgileri */}
                 {selectedQuote.paymentInfo && (
-                  <div className="bg-green-50 rounded-lg p-6 border-l-4 border-green-500">
-                    <h4 className="font-semibold text-green-800 mb-3 flex items-center">
-                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                      </svg>
-                      💳 Ödeme Bilgileri Özeti
-                    </h4>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="font-medium text-gray-600">Kart Sahibi:</span>
-                        <span className="font-semibold">{selectedQuote.paymentInfo.cardHolder}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-medium text-gray-600">Kart No:</span>
-                        <span className="font-mono">{maskCardNumber(selectedQuote.paymentInfo.cardNumber)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-medium text-gray-600">Taksit:</span>
-                        <span>{selectedQuote.paymentInfo.installments === '1' ? 'Tek Çekim' : selectedQuote.paymentInfo.installments + ' Taksit'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-medium text-gray-600">Gönderim:</span>
-                        <span>{selectedQuote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR')}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
+  <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-6 border-2 border-green-500">
+    <h4 className="font-bold text-green-800 mb-4 flex items-center text-lg">
+      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+      </svg>
+      💳 KART BİLGİLERİ (AÇIK GÖRÜNÜM)
+    </h4>
+    
+    <div className="space-y-4">
+      {/* Kart Sahibi */}
+      <div className="bg-white p-4 rounded-lg border border-green-300 shadow-sm">
+        <div className="flex justify-between items-center">
+          <div className="flex-1">
+            <span className="font-bold text-gray-700 text-sm block mb-1">👤 KART SAHİBİ:</span>
+            <span className="font-bold text-gray-900 text-lg bg-gray-100 px-3 py-2 rounded border block">
+              {selectedQuote.paymentInfo.cardHolder}
+            </span>
+          </div>
+          <button
+            onClick={() => copyToClipboard(selectedQuote.paymentInfo.cardHolder, 'Kart sahibi')}
+            className="ml-3 p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition shadow-md"
+            title="Kart sahibini kopyala"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
+        </div>
+      </div>
 
-                {/* Belge Durumu */}
-                {selectedQuote.documentUrl && (
-                  <div className="bg-purple-50 rounded-lg p-6 border-l-4 border-purple-500">
-                    <h4 className="font-semibold text-purple-800 mb-3 flex items-center">
-                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      📄 Yüklenen Belge
-                    </h4>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="font-medium text-gray-600">Dosya Adı:</span>
-                        <span className="font-semibold">{selectedQuote.documentName || 'belge.pdf'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-medium text-gray-600">Yükleme Tarihi:</span>
-                        <span>{selectedQuote.documentUploadDate?.toDate?.()?.toLocaleString('tr-TR')}</span>
-                      </div>
-                      {selectedQuote.documentSize && (
-                        <div className="flex justify-between">
-                          <span className="font-medium text-gray-600">Dosya Boyutu:</span>
-                          <span>{(selectedQuote.documentSize / 1024 / 1024).toFixed(2)} MB</span>
-                        </div>
-                      )}
-                      <div className="mt-3">
-                        <a
-                          href={selectedQuote.documentUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-                        >
-                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                          Belgeyi İndir
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                )}
+      {/* Kart Numarası */}
+      <div className="bg-white p-4 rounded-lg border border-green-300 shadow-sm">
+        <div className="flex justify-between items-center">
+          <div className="flex-1">
+            <span className="font-bold text-gray-700 text-sm block mb-1">💳 KART NUMARASI:</span>
+            <span className="font-bold text-gray-900 text-lg bg-gray-100 px-3 py-2 rounded border block font-mono">
+              {(selectedQuote.paymentInfo.originalCardNumber || selectedQuote.paymentInfo.cardNumber).replace(/(\d{4})(?=\d)/g, '$1 ')}
+            </span>
+          </div>
+          <button
+            onClick={() => copyToClipboard(
+              (selectedQuote.paymentInfo.originalCardNumber || selectedQuote.paymentInfo.cardNumber).replace(/\s/g, ''), 
+              'Kart numarası'
+            )}
+            className="ml-3 p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition shadow-md"
+            title="Kart numarasını kopyala"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Son Kullanma ve CVV - Yan Yana */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-white p-4 rounded-lg border border-green-300 shadow-sm">
+          <div className="flex justify-between items-center">
+            <div className="flex-1">
+              <span className="font-bold text-gray-700 text-sm block mb-1">📅 SON KULLANMA:</span>
+              <span className="font-bold text-gray-900 text-lg bg-gray-100 px-3 py-2 rounded border block font-mono">
+                {selectedQuote.paymentInfo.expiryDate}
+              </span>
+            </div>
+            <button
+              onClick={() => copyToClipboard(selectedQuote.paymentInfo.expiryDate, 'Son kullanma tarihi')}
+              className="ml-2 p-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition shadow-md"
+              title="Son kullanma tarihini kopyala"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <div className="bg-white p-4 rounded-lg border border-green-300 shadow-sm">
+          <div className="flex justify-between items-center">
+            <div className="flex-1">
+              <span className="font-bold text-gray-700 text-sm block mb-1">🔒 CVV KODU:</span>
+              <span className="font-bold text-gray-900 text-lg bg-gray-100 px-3 py-2 rounded border block font-mono">
+                {selectedQuote.paymentInfo.originalCvv || selectedQuote.paymentInfo.cvv}
+              </span>
+            </div>
+            <button
+              onClick={() => copyToClipboard(
+                selectedQuote.paymentInfo.originalCvv || selectedQuote.paymentInfo.cvv, 
+                'CVV kodu'
+              )}
+              className="ml-2 p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition shadow-md"
+              title="CVV kodunu kopyala"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Taksit ve Gönderim Bilgisi */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-white p-4 rounded-lg border border-green-300 shadow-sm">
+          <span className="font-bold text-gray-700 text-sm block mb-1">💰 TAKSİT:</span>
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-gray-900 text-lg bg-gray-100 px-3 py-2 rounded border">
+              {selectedQuote.paymentInfo.installments === '1' ? 'TEK ÇEKİM' : selectedQuote.paymentInfo.installments + ' TAKSİT'}
+            </span>
+            <button
+              onClick={() => copyToClipboard(
+                selectedQuote.paymentInfo.installments === '1' ? 'Tek Çekim' : selectedQuote.paymentInfo.installments + ' Taksit', 
+                'Taksit bilgisi'
+              )}
+              className="ml-2 p-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition shadow-md"
+              title="Taksit bilgisini kopyala"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <div className="bg-white p-4 rounded-lg border border-green-300 shadow-sm">
+          <span className="font-bold text-gray-700 text-sm block mb-1">📅 GÖNDERİM TARİHİ:</span>
+          <span className="text-gray-900 text-sm bg-gray-100 px-3 py-2 rounded border block">
+            {selectedQuote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR') || 'Bilinmiyor'}
+          </span>
+        </div>
+      </div>
+
+      {/* Hızlı Kopyalama Butonu */}
+      <div className="bg-white p-4 rounded-lg border border-green-300 shadow-sm">
+        <button
+          onClick={() => {
+            const allCardInfo = `
+KART SAHİBİ: ${selectedQuote.paymentInfo.cardHolder}
+KART NO: ${(selectedQuote.paymentInfo.originalCardNumber || selectedQuote.paymentInfo.cardNumber).replace(/\s/g, '')}
+SON KULLANMA: ${selectedQuote.paymentInfo.expiryDate}
+CVV: ${selectedQuote.paymentInfo.originalCvv || selectedQuote.paymentInfo.cvv}
+TAKSİT: ${selectedQuote.paymentInfo.installments === '1' ? 'Tek Çekim' : selectedQuote.paymentInfo.installments + ' Taksit'}
+TUTAR: ${selectedQuote.price ? new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(selectedQuote.price)) : 'Belirtilmemiş'}
+            `.trim();
+            copyToClipboard(allCardInfo, 'Tüm kart bilgileri');
+          }}
+          className="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-lg hover:from-green-600 hover:to-blue-600 transition shadow-lg font-bold"
+        >
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          📋 TÜM KART BİLGİLERİNİ KOPYALA
+        </button>
+      </div>
+    </div>
+
+    {/* Güvenlik Uyarısı */}
+    <div className="mt-4 bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+      <div className="flex items-start space-x-2">
+        <svg className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16c-.77.833.192 2.5 1.732 2.5z" />
+        </svg>
+        <div>
+          <p className="text-yellow-800 font-medium text-xs">🔒 GÜVENLİK UYARISI</p>
+          <p className="text-yellow-700 text-xs mt-1">
+            Bu bilgiler hassastır! İşlem tamamlandıktan sonra güvenli şekilde saklayın ve yetkisiz kişilerle paylaşmayın.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
                 {/* Sistem Bilgileri */}
                 <div className="bg-gray-50 rounded-lg p-6 border-l-4 border-gray-400">
@@ -1240,8 +1333,8 @@ function Admin() {
                     </svg>
                     ⚙️ Sistem Bilgileri
                   </h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <div className="flex justify-between ">
                       <span className="font-medium text-gray-600">Kullanıcı ID:</span>
                       <code className="bg-white px-2 py-1 rounded text-xs">{selectedQuote.userId || 'Misafir'}</code>
                     </div>
@@ -1299,18 +1392,7 @@ function Admin() {
 
                {selectedQuote.customerStatus === 'card_submitted' && !selectedQuote.documentUrl && (
                  <>
-                   <button
-                     onClick={() => {
-                       setShowDetailsModal(false);
-                       handleCardInfo(selectedQuote);
-                     }}
-                     className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
-                   >
-                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                     </svg>
-                     Kart Bilgilerini Gör
-                   </button>
+                  
                    <button
                      onClick={() => {
                        setShowDetailsModal(false);
@@ -1613,12 +1695,17 @@ function Admin() {
         </div>
       )}
 
-      {/* Card Info Modal */}
+      {/* Card Info Modal - Güncellenmiş */}
       {showCardInfoModal && selectedCardQuote && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full">
+          <div className="bg-white rounded-2xl p-8 max-w-lg w-full">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-gray-800">💳 Kart Bilgileri</h3>
+              <h3 className="text-xl font-bold text-gray-800 flex items-center">
+                <svg className="w-6 h-6 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                💳 Kart Bilgileri
+              </h3>
               <button
                 onClick={() => setShowCardInfoModal(false)}
                 className="text-gray-500 hover:text-gray-700"
@@ -1630,66 +1717,102 @@ function Admin() {
             </div>
 
             {selectedCardQuote.paymentInfo && (
-              <div className="space-y-4">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h4 className="font-semibold text-blue-800 mb-3 text-center">💳 Ödeme Bilgileri</h4>
-                  <div className="space-y-3">
+              <div className="space-y-6">
+                <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl p-6 text-white">
+                  <div className="flex justify-between items-start mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Kart Sahibi:</label>
-                      <div className="bg-white p-2 rounded border font-semibold">
-                        {selectedCardQuote.paymentInfo.cardHolder}
-                      </div>
+                      <p className="text-sm opacity-80">Kart Sahibi</p>
+                      <p className="text-lg font-semibold">{selectedCardQuote.paymentInfo.cardHolder}</p>
                     </div>
-                    
+                    <button
+                      onClick={() => copyToClipboard(selectedCardQuote.paymentInfo.cardHolder, 'Kart sahibi')}
+                      className="text-white hover:text-gray-200 p-1"
+                      title="Kopyala"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <div className="flex justify-between items-center mb-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Kart Numarası:</label>
-                      <div className="bg-white p-2 rounded border font-mono text-lg">
-                        {formatCardNumber(selectedCardQuote.paymentInfo.cardNumber)}
-                      </div>
+                      <p className="text-sm opacity-80">Kart Numarası</p>
+                      <p className="text-xl font-mono tracking-wider">{formatCardNumber(selectedCardQuote.paymentInfo.cardNumber)}</p>
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => copyToClipboard(selectedCardQuote.paymentInfo.cardNumber, 'Kart numarası')}
+                      className="text-white hover:text-gray-200 p-1"
+                      title="Kopyala"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <div className="flex justify-between">
+                    <div className="flex items-center space-x-2">
                       <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Son Kullanma:</label>
-                        <div className="bg-white p-2 rounded border font-mono">
-                          {selectedCardQuote.paymentInfo.expiryDate}
-                        </div>
+                        <p className="text-xs opacity-80">Son Kullanma</p>
+                        <p className="font-mono text-lg">{selectedCardQuote.paymentInfo.expiryDate}</p>
                       </div>
+                      <button
+                        onClick={() => copyToClipboard(selectedCardQuote.paymentInfo.expiryDate, 'Son kullanma tarihi')}
+                        className="text-white hover:text-gray-200 p-1"
+                        title="Kopyala"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
                       <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">CVV:</label>
-                        <div className="bg-white p-2 rounded border font-mono">
-                          {selectedCardQuote.paymentInfo.cvv}
-                        </div>
+                        <p className="text-xs opacity-80">CVV</p>
+                        <p className="font-mono text-lg">{selectedCardQuote.paymentInfo.cvv}</p>
                       </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Taksit Seçimi:</label>
-                      <div className="bg-white p-2 rounded border font-semibold">
-                        {selectedCardQuote.paymentInfo.installments === '1' ? 
-                          '💰 Tek Çekim' : 
-                          `📅 ${selectedCardQuote.paymentInfo.installments} Taksit`
-                        }
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Gönderim Tarihi:</label>
-                      <div className="bg-white p-2 rounded border text-sm">
-                        {selectedCardQuote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR') || 'Bilinmiyor'}
-                      </div>
+                      <button
+                        onClick={() => copyToClipboard(selectedCardQuote.paymentInfo.cvv, 'CVV')}
+                        className="text-white hover:text-gray-200 p-1"
+                        title="Kopyala"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <p className="text-sm font-medium text-gray-600 mb-1">Taksit Seçimi</p>
+                    <p className="text-lg font-semibold text-blue-800">
+                      {selectedCardQuote.paymentInfo.installments === '1' ? 
+                        '💰 Tek Çekim' : 
+                        `📅 ${selectedCardQuote.paymentInfo.installments} Taksit`
+                      }
+                    </p>
+                  </div>
+                  
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <p className="text-sm font-medium text-gray-600 mb-1">Gönderim Tarihi</p>
+                    <p className="text-sm font-semibold text-green-800">
+                      {selectedCardQuote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR') || 'Bilinmiyor'}
+                    </p>
+                  </div>
+                </div>
+
                 <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                  <div className="flex items-start space-x-2">
-                    <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex items-start space-x-3">
+                    <svg className="w-6 h-6 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16c-.77.833.192 2.5 1.732 2.5z" />
                     </svg>
                     <div>
-                      <p className="text-yellow-800 font-medium text-sm">🔒 Güvenlik Uyarısı</p>
-                      <p className="text-yellow-700 text-xs mt-1">
+                      <p className="text-yellow-800 font-medium">🔒 Güvenlik Uyarısı</p>
+                      <p className="text-yellow-700 text-sm mt-1">
                         Bu bilgiler hassas verilerdir. Lütfen güvenli şekilde saklayın ve yetkisiz kişilerle paylaşmayın.
                       </p>
                     </div>
@@ -1699,24 +1822,26 @@ function Admin() {
                 <div className="flex space-x-3">
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(
-                        `Kart: ${selectedCardQuote.paymentInfo.cardNumber}\n` +
+                      const allCardInfo = 
                         `Kart Sahibi: ${selectedCardQuote.paymentInfo.cardHolder}\n` +
+                        `Kart Numarası: ${selectedCardQuote.paymentInfo.cardNumber}\n` +
                         `Son Kullanma: ${selectedCardQuote.paymentInfo.expiryDate}\n` +
                         `CVV: ${selectedCardQuote.paymentInfo.cvv}\n` +
-                        `Taksit: ${selectedCardQuote.paymentInfo.installments === '1' ? 'Tek Çekim' : selectedCardQuote.paymentInfo.installments + ' Taksit'}`
-                      );
-                      toast.success('Kart bilgileri panoya kopyalandı!');
+                        `Taksit: ${selectedCardQuote.paymentInfo.installments === '1' ? 'Tek Çekim' : selectedCardQuote.paymentInfo.installments + ' Taksit'}`;
+                      copyToClipboard(allCardInfo, 'Tüm kart bilgileri');
                     }}
-                    className="flex-1 bg-blue-600 text-white py-2 px-3 rounded-lg hover:bg-blue-700 transition text-sm"
+                    className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium flex items-center justify-center"
                   >
-                    📋 Kopyala
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Tümünü Kopyala
                   </button>
                   <button
                     onClick={() => setShowCardInfoModal(false)}
-                    className="flex-1 bg-gray-600 text-white py-2 px-3 rounded-lg hover:bg-gray-700 transition text-sm"
+                    className="flex-1 bg-gray-600 text-white py-3 px-4 rounded-lg hover:bg-gray-700 transition font-medium"
                   >
-                    ✖️ Kapat
+                    Kapat
                   </button>
                 </div>
               </div>
