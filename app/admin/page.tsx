@@ -18,6 +18,7 @@ function Admin() {
   const [selectedQuote, setSelectedQuote] = useState<any>(null);
   const [showResponseModal, setShowResponseModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [responseData, setResponseData] = useState({
     adminResponse: '',
     price: '',
@@ -30,6 +31,17 @@ function Admin() {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [newQuotesCount, setNewQuotesCount] = useState(0);
   const [paidQuotesCount, setPaidQuotesCount] = useState(0);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [userFormData, setUserFormData] = useState({
+    name: '',
+    surname: '',
+    phone: '',
+    tcno: '',
+    email: '',
+    role: 'user',
+    password: ''
+  });
 
   const notificationSound = typeof Audio !== 'undefined' ? new Audio('/sounds/nsound.mp3') : null;
 
@@ -135,6 +147,119 @@ function Admin() {
     }
   };
 
+  // YENİ FONKSİYON: Kullanıcı ekleme
+  const addUser = () => {
+    setEditingUser(null);
+    setUserFormData({
+      name: '',
+      surname: '',
+      phone: '',
+      tcno: '',
+      email: '',
+      role: 'user',
+      password: ''
+    });
+    setShowUserModal(true);
+  };
+
+  // YENİ FONKSİYON: Kullanıcı düzenleme
+  const editUser = (user: any) => {
+    setEditingUser(user);
+    setUserFormData({
+      name: user.name || '',
+      surname: user.surname || '',
+      phone: user.phone || '',
+      tcno: user.tcno || '',
+      email: user.email || '',
+      role: user.role || 'user',
+      password: '' // Şifre alanı boş bırakılır
+    });
+    setShowUserModal(true);
+  };
+
+  // YENİ FONKSİYON: Kullanıcı kaydetme
+  const saveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      if (editingUser) {
+        // Kullanıcı güncelleme
+        const updateData: any = {
+          name: userFormData.name,
+          surname: userFormData.surname,
+          phone: userFormData.phone,
+          tcno: userFormData.tcno,
+          email: userFormData.email,
+          role: userFormData.role,
+          updatedAt: new Date()
+        };
+
+        await updateDoc(doc(db, 'users', editingUser.id), updateData);
+        toast.success('Kullanıcı başarıyla güncellendi!');
+      } else {
+        // Yeni kullanıcı ekleme
+        const { createUserWithEmailAndPassword } = await import('firebase/auth');
+        const { setDoc } = await import('firebase/firestore');
+        
+        // Firebase Auth ile kullanıcı oluştur
+        const userCredential = await createUserWithEmailAndPassword(
+          auth, 
+          userFormData.email, 
+          userFormData.password
+        );
+
+        // Firestore'a kullanıcı bilgilerini kaydet
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          name: userFormData.name,
+          surname: userFormData.surname,
+          phone: userFormData.phone,
+          tcno: userFormData.tcno,
+          email: userFormData.email,
+          role: userFormData.role,
+          createdAt: new Date(),
+          createdBy: 'admin',
+          isActive: true
+        });
+
+        toast.success('Kullanıcı başarıyla eklendi!');
+      }
+
+      setShowUserModal(false);
+      fetchUsers(); // Kullanıcı listesini yenile
+    } catch (error: any) {
+      console.error('Kullanıcı kaydetme hatası:', error);
+      
+      let errorMessage = 'Bir hata oluştu!';
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = 'Bu email adresi zaten kullanımda!';
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = 'Şifre çok zayıf! En az 6 karakter olmalıdır.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Geçersiz email adresi!';
+      }
+      
+      toast.error(errorMessage);
+    }
+  };
+
+  // Telefon numarası formatlaması
+  const formatPhone = (value: string) => {
+    const numbers = value.replace(/\D/g, '');
+    let formatted = numbers;
+    if (formatted.length > 0 && !formatted.startsWith('0')) {
+      formatted = '0' + formatted;
+    }
+    formatted = formatted.slice(0, 11);
+    
+    if (formatted.length > 4) {
+      formatted = formatted.replace(/(\d{4})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3 $4');
+    } else if (formatted.length > 2) {
+      formatted = formatted.replace(/(\d{4})(\d{1,3})/, '$1 $2');
+    }
+    
+    return formatted;
+  };
+
   const handleQuoteResponse = (quote: any) => {
     setSelectedQuote(quote);
     setResponseData({
@@ -201,7 +326,6 @@ function Admin() {
     try {
       setUploadProgress(0);
       
-      // İlk kontroller
       console.log('📦 Storage instance kontrol ediliyor...');
       setUploadProgress(5);
       
@@ -212,7 +336,6 @@ function Admin() {
       console.log('✅ Storage bucket OK:', storage.app.options.storageBucket);
       setUploadProgress(10);
       
-      // Storage reference oluştur
       const timestamp = Date.now();
       const fileName = `${timestamp}_${uploadFile.name}`;
       const storageRef = ref(storage, `documents/${selectedQuote.id}/${fileName}`);
@@ -220,38 +343,24 @@ function Admin() {
       
       setUploadProgress(15);
       
-      // Upload task başlat - Resumable upload kullan
       console.log('⬆️ Dosya yükleme başlatılıyor...');
       const uploadTask = uploadBytesResumable(storageRef, uploadFile);
       
-      // Upload progress'ini dinle
       await new Promise((resolve, reject) => {
         uploadTask.on('state_changed',
           (snapshot) => {
-            // Progress hesaplama
             const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            const adjustedProgress = 15 + (progress * 0.5); // 15% başlangıç + %50 upload
+            const adjustedProgress = 15 + (progress * 0.5);
             setUploadProgress(Math.round(adjustedProgress));
             
             console.log(`📊 Upload progress: ${progress.toFixed(1)}% (${snapshot.bytesTransferred}/${snapshot.totalBytes} bytes)`);
-            
-            switch (snapshot.state) {
-              case 'paused':
-                console.log('⏸️ Upload paused');
-                break;
-              case 'running':
-                console.log('🔄 Upload running');
-                break;
-            }
           },
           (error) => {
-            // Hata durumu
             console.error('❌ Upload error:', error);
             setUploadProgress(0);
             reject(error);
           },
           () => {
-            // Başarılı upload
             console.log('✅ Upload completed successfully');
             setUploadProgress(70);
             resolve(uploadTask.snapshot);
@@ -259,7 +368,6 @@ function Admin() {
         );
       });
       
-      // Download URL al
       console.log('🔗 Download URL alınıyor...');
       setUploadProgress(75);
       const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
@@ -267,7 +375,6 @@ function Admin() {
       
       setUploadProgress(85);
       
-      // Firestore'u güncelle
       console.log('💾 Firestore güncelleniyor...');
       await updateDoc(doc(db, 'quotes', selectedQuote.id), {
         documentUrl: downloadURL,
@@ -282,7 +389,6 @@ function Admin() {
       console.log('✅ Firestore güncellendi');
       setUploadProgress(95);
 
-      // Kullanıcıya bildirim gönder
       console.log('📧 Kullanıcı bildirimi gönderiliyor...');
       await sendUserNotification(selectedQuote.userId, {
         type: 'document_ready',
@@ -296,7 +402,6 @@ function Admin() {
       console.log('🎉 Tüm işlemler tamamlandı!');
       toast.success('🎉 Belge başarıyla yüklendi ve müşteriye bildirildi!');
       
-      // Modal'ı kapat
       setTimeout(() => {
         setShowUploadModal(false);
         setSelectedQuote(null);
@@ -306,8 +411,6 @@ function Admin() {
       
     } catch (error: any) {
       console.error('❌ Belge yükleme hatası:', error);
-      
-      // Progress'i sıfırla
       setUploadProgress(0);
       
       let errorMessage = 'Belge yüklenirken hata oluştu!';
@@ -343,18 +446,6 @@ function Admin() {
       }
       
       toast.error(errorMessage);
-      
-      // Debug için detaylı log
-      console.error('Hata detayları:', {
-        errorCode: error.code,
-        errorMessage: error.message,
-        errorStack: error.stack,
-        storageBucket: storage.app.options.storageBucket,
-        fileName: uploadFile.name,
-        fileSize: uploadFile.size,
-        fileType: uploadFile.type,
-        quoteId: selectedQuote.id
-      });
     }
   };
 
@@ -486,14 +577,11 @@ function Admin() {
     );
   };
 
-  // Kart numarasını formatla
   const formatCardNumber = (cardNumber: string) => {
     if (!cardNumber) return '';
-    // 16 haneli kart numarasını 4'lü gruplar halinde göster
     return cardNumber.replace(/(\d{4})(?=\d)/g, '$1 ');
   };
 
-  // Kart numarasını maskele
   const maskCardNumber = (cardNumber: string) => {
     if (!cardNumber) return '';
     const cleanNumber = cardNumber.replace(/\s/g, '');
@@ -503,7 +591,6 @@ function Admin() {
     return cardNumber;
   };
 
-  // CVV'yi maskele
   const maskCVV = (cvv: string) => {
     if (!cvv) return '';
     return '***';
@@ -536,6 +623,12 @@ function Admin() {
       console.error('❌ Firebase Storage test hatası:', error);
       toast.error(`Storage test hatası: ${error.code || error.message}`);
     }
+  };
+
+  // Eksik fonksiyon: Teklif detaylarını göster
+  const showQuoteDetails = (quote: any) => {
+    setSelectedQuote(quote);
+    setShowDetailsModal(true);
   };
 
   if (loading) {
@@ -670,6 +763,18 @@ function Admin() {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex space-x-2">
+                          {/* YENİ: Detay Butonu - Her zaman görünür */}
+                          <button
+                            onClick={() => showQuoteDetails(quote)}
+                            className="text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1"
+                            title="Teklif detaylarını görüntüle"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>Detay</span>
+                          </button>
+
                           {quote.status === 'pending' && (
                             <>
                               <button
@@ -734,49 +839,648 @@ function Admin() {
           )}
 
           {activeTab === 'users' && (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4">İsim Soyisim</th>
-                    <th className="text-left py-3 px-4">Telefon</th>
-                    <th className="text-left py-3 px-4">Rol</th>
-                    <th className="text-left py-3 px-4">İşlemler</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => (
-                    <tr key={user.id} className="border-b">
-                      <td className="py-3 px-4">{user.name} {user.surname}</td>
-                      <td className="py-3 px-4">{user.phone}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 rounded text-sm ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
-                          {user.role === 'admin' ? 'Admin' : 'Kullanıcı'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <button
-                          onClick={() => deleteUser(user.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          Sil
-                        </button>
-                      </td>
+            <div>
+              {/* Kullanıcı Yönetimi Header */}
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold text-gray-800">Kullanıcı Yönetimi</h2>
+                <button
+                  onClick={addUser}
+                  className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  Yeni Kullanıcı Ekle
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-4">İsim Soyisim</th>
+                      <th className="text-left py-3 px-4">Email</th>
+                      <th className="text-left py-3 px-4">Telefon</th>
+                      <th className="text-left py-3 px-4">TC Kimlik</th>
+                      <th className="text-left py-3 px-4">Rol</th>
+                      <th className="text-left py-3 px-4">Kayıt Tarihi</th>
+                      <th className="text-left py-3 px-4">İşlemler</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {users.map((user) => (
+                      <tr key={user.id} className="border-b hover:bg-gray-50">
+                        <td className="py-3 px-4">
+                          <div className="flex items-center">
+                            <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center mr-3">
+                              <span className="text-purple-600 font-semibold text-sm">
+                                {user.name?.charAt(0)?.toUpperCase() || 'U'}
+                              </span>
+                            </div>
+                            <span className="font-medium">{user.name} {user.surname}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-gray-600">{user.email || '-'}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <a href={`tel:${user.phone}`} className="text-purple-600 hover:text-purple-800">
+                            {user.phone}
+                          </a>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-mono text-sm">{user.tcno || '-'}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 rounded text-sm ${
+                            user.role === 'admin' 
+                              ? 'bg-purple-100 text-purple-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {user.role === 'admin' ? 'Admin' : 'Kullanıcı'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-sm text-gray-500">
+                            {user.createdAt?.toDate?.()?.toLocaleDateString('tr-TR') || '-'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => editUser(user)}
+                              className="text-blue-600 hover:text-blue-800 font-medium flex items-center"
+                              title="Kullanıcıyı düzenle"
+                            >
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Düzenle
+                            </button>
+                            <button
+                              onClick={() => deleteUser(user.id)}
+                              className="text-red-600 hover:text-red-800 font-medium flex items-center"
+                              title="Kullanıcıyı sil"
+                            >
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              Sil
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                
+                {users.length === 0 && (
+                  <div className="text-center py-8">
+                    <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                    </svg>
+                    <p className="text-gray-500 text-lg">Henüz kullanıcı bulunmamaktadır.</p>
+                    <button
+                      onClick={addUser}
+                      className="mt-4 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                    >
+                      İlk Kullanıcıyı Ekle
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Teklif Cevaplama Modal - Geliştirilmiş */}
+    
+      {showDetailsModal && selectedQuote && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-gray-800 flex items-center">
+                <svg className="w-6 h-6 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Teklif Detayları
+              </h3>
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Sol Kolon - Temel Bilgiler */}
+              <div className="space-y-6">
+                {/* Teklif Bilgileri */}
+                <div className="bg-blue-50 rounded-lg p-6 border-l-4 border-blue-500">
+                  <h4 className="font-semibold text-blue-800 mb-4 flex items-center">
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    📋 Teklif Bilgileri
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="font-medium text-gray-600">Teklif ID:</span>
+                      <code className="bg-blue-200 px-2 py-1 rounded text-sm">{selectedQuote.id}</code>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium text-gray-600">Sigorta Türü:</span>
+                      <span className="font-semibold">{selectedQuote.insuranceType}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium text-gray-600">Durum:</span>
+                      {getStatusBadge(selectedQuote)}
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium text-gray-600">Oluşturma Tarihi:</span>
+                      <span>{selectedQuote.createdAt?.toDate?.()?.toLocaleString('tr-TR') || 'N/A'}</span>
+                    </div>
+                    {selectedQuote.responseDate && (
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-600">Cevap Tarihi:</span>
+                        <span>{selectedQuote.responseDate?.toDate?.()?.toLocaleString('tr-TR')}</span>
+                      </div>
+                    )}
+                    {selectedQuote.price && (
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-600">Fiyat:</span>
+                        <span className="text-lg font-bold text-green-600">
+                          {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(selectedQuote.price))}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Müşteri Bilgileri */}
+                <div className="bg-green-50 rounded-lg p-6 border-l-4 border-green-500">
+                  <h4 className="font-semibold text-green-800 mb-4 flex items-center">
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    👤 Müşteri Bilgileri
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="font-medium text-gray-600">İsim Soyisim:</span>
+                      <span className="font-semibold">{selectedQuote.name || 'Belirtilmemiş'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium text-gray-600">Telefon:</span>
+                      <a href={`tel:${selectedQuote.phone}`} className="text-green-600 hover:text-green-800 font-semibold">
+                        {selectedQuote.phone}
+                      </a>
+                    </div>
+                    {selectedQuote.tcno && (
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-600">TC Kimlik:</span>
+                        <span className="font-mono">{selectedQuote.tcno}</span>
+                      </div>
+                    )}
+                    {selectedQuote.birthdate && (
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-600">Doğum Tarihi:</span>
+                        <span>{new Date(selectedQuote.birthdate).toLocaleDateString('tr-TR')}</span>
+                      </div>
+                    )}
+                    {selectedQuote.address && (
+                      <div>
+                        <span className="font-medium text-gray-600 block mb-1">Adres:</span>
+                        <p className="text-sm bg-white p-2 rounded border">{selectedQuote.address}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Araç/Mülk Bilgileri */}
+                {(selectedQuote.plate || selectedQuote.registration || selectedQuote.propertyType || selectedQuote.propertyAddress) && (
+                  <div className="bg-purple-50 rounded-lg p-6 border-l-4 border-purple-500">
+                    <h4 className="font-semibold text-purple-800 mb-4 flex items-center">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                      {selectedQuote.plate || selectedQuote.registration ? '🚗 Araç Bilgileri' : '🏠 Mülk Bilgileri'}
+                    </h4>
+                    <div className="space-y-3">
+                      {selectedQuote.plate && (
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-600">Plaka:</span>
+                          <span className="font-mono bg-white px-2 py-1 rounded border">{selectedQuote.plate}</span>
+                        </div>
+                      )}
+                      {selectedQuote.registration && (
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-600">Ruhsat Seri:</span>
+                          <span className="font-mono bg-white px-2 py-1 rounded border">{selectedQuote.registration}</span>
+                        </div>
+                      )}
+                      {selectedQuote.propertyType && (
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-600">Mülk Türü:</span>
+                          <span className="font-semibold">{selectedQuote.propertyType}</span>
+                        </div>
+                      )}
+                      {selectedQuote.propertyAddress && (
+                        <div>
+                          <span className="font-medium text-gray-600 block mb-1">Mülk Adresi:</span>
+                          <p className="text-sm bg-white p-2 rounded border">{selectedQuote.propertyAddress}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sağ Kolon - Admin Notları ve İşlemler */}
+              <div className="space-y-6">
+                {/* Admin Cevabı */}
+                {selectedQuote.adminResponse && (
+                  <div className="bg-blue-50 rounded-lg p-6 border-l-4 border-blue-500">
+                    <h4 className="font-semibold text-blue-800 mb-3 flex items-center">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      📝 Müşteriye Gönderilen Cevap
+                    </h4>
+                    <div className="bg-white p-4 rounded border border-blue-200">
+                      <p className="text-gray-800 whitespace-pre-wrap">{selectedQuote.adminResponse}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Admin Notları */}
+                {selectedQuote.adminNotes && (
+                  <div className="bg-yellow-50 rounded-lg p-6 border-l-4 border-yellow-500">
+                    <h4 className="font-semibold text-yellow-800 mb-3 flex items-center">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      🗒️ Admin Notları (İç Kullanım)
+                    </h4>
+                    <div className="bg-white p-4 rounded border border-yellow-200">
+                      <p className="text-gray-800 whitespace-pre-wrap">{selectedQuote.adminNotes}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Red Nedeni */}
+                {selectedQuote.rejectionReason && (
+                  <div className="bg-red-50 rounded-lg p-6 border-l-4 border-red-500">
+                    <h4 className="font-semibold text-red-800 mb-3 flex items-center">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      ❌ Red Nedeni
+                    </h4>
+                    <div className="bg-white p-4 rounded border border-red-200">
+                      <p className="text-gray-800 whitespace-pre-wrap">{selectedQuote.rejectionReason}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Müşteri Red Nedeni */}
+                {selectedQuote.customerRejectionReason && (
+                  <div className="bg-gray-50 rounded-lg p-6 border-l-4 border-gray-500">
+                    <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      👤 Müşteri Red Nedeni
+                    </h4>
+                    <div className="bg-white p-4 rounded border border-gray-200">
+                      <p className="text-gray-800 whitespace-pre-wrap">{selectedQuote.customerRejectionReason}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Ödeme Bilgileri */}
+                {selectedQuote.paymentInfo && (
+                  <div className="bg-green-50 rounded-lg p-6 border-l-4 border-green-500">
+                    <h4 className="font-semibold text-green-800 mb-3 flex items-center">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                      </svg>
+                      💳 Ödeme Bilgileri Özeti
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-600">Kart Sahibi:</span>
+                        <span className="font-semibold">{selectedQuote.paymentInfo.cardHolder}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-600">Kart No:</span>
+                        <span className="font-mono">{maskCardNumber(selectedQuote.paymentInfo.cardNumber)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-600">Taksit:</span>
+                        <span>{selectedQuote.paymentInfo.installments === '1' ? 'Tek Çekim' : selectedQuote.paymentInfo.installments + ' Taksit'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-600">Gönderim:</span>
+                        <span>{selectedQuote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR')}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Belge Durumu */}
+                {selectedQuote.documentUrl && (
+                  <div className="bg-purple-50 rounded-lg p-6 border-l-4 border-purple-500">
+                    <h4 className="font-semibold text-purple-800 mb-3 flex items-center">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      📄 Yüklenen Belge
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-600">Dosya Adı:</span>
+                        <span className="font-semibold">{selectedQuote.documentName || 'belge.pdf'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-600">Yükleme Tarihi:</span>
+                        <span>{selectedQuote.documentUploadDate?.toDate?.()?.toLocaleString('tr-TR')}</span>
+                      </div>
+                      {selectedQuote.documentSize && (
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-600">Dosya Boyutu:</span>
+                          <span>{(selectedQuote.documentSize / 1024 / 1024).toFixed(2)} MB</span>
+                        </div>
+                      )}
+                      <div className="mt-3">
+                        <a
+                          href={selectedQuote.documentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          Belgeyi İndir
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sistem Bilgileri */}
+                <div className="bg-gray-50 rounded-lg p-6 border-l-4 border-gray-400">
+                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center">
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    ⚙️ Sistem Bilgileri
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="font-medium text-gray-600">Kullanıcı ID:</span>
+                      <code className="bg-white px-2 py-1 rounded text-xs">{selectedQuote.userId || 'Misafir'}</code>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium text-gray-600">Kendi Bilgileri:</span>
+                      <span className={selectedQuote.isForSelf ? 'text-green-600' : 'text-gray-600'}>
+                        {selectedQuote.isForSelf ? 'Evet' : 'Hayır'}
+                      </span>
+                    </div>
+                    {selectedQuote.awaitingProcessing !== undefined && (
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-600">İşlem Bekliyor:</span>
+                        <span className={selectedQuote.awaitingProcessing ? 'text-orange-600' : 'text-green-600'}>
+                          {selectedQuote.awaitingProcessing ? 'Evet' : 'Hayır'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Alt Kısım - Hızlı İşlemler */}
+            <div className="mt-8 pt-6 border-t">
+              <h4 className="font-semibold text-gray-700 mb-4">🚀 Hızlı İşlemler</h4>
+              <div className="flex flex-wrap gap-3">
+                {selectedQuote.status === 'pending' && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setShowDetailsModal(false);
+                        handleQuoteResponse(selectedQuote);
+                      }}
+                      className="flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      Cevapla
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDetailsModal(false);
+                        rejectQuote(selectedQuote);
+                      }}
+                      className="flex items-center px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Reddet
+                      </button>
+                 </>
+               )}
+
+               {selectedQuote.customerStatus === 'card_submitted' && !selectedQuote.documentUrl && (
+                 <>
+                   <button
+                     onClick={() => {
+                       setShowDetailsModal(false);
+                       handleCardInfo(selectedQuote);
+                     }}
+                     className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                   >
+                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                     </svg>
+                     Kart Bilgilerini Gör
+                   </button>
+                   <button
+                     onClick={() => {
+                       setShowDetailsModal(false);
+                       handleDocumentUpload(selectedQuote);
+                     }}
+                     className="flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
+                   >
+                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                     </svg>
+                     Belge Yükle
+                   </button>
+                 </>
+               )}
+
+               <button
+                 onClick={() => {
+                   window.open(`https://wa.me/90${selectedQuote.phone.replace(/\D/g, '')}`, '_blank');
+                 }}
+                 className="flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
+               >
+                 <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.886 3.75"/>
+                 </svg>
+                 WhatsApp
+               </button>
+
+               <button
+                 onClick={() => setShowDetailsModal(false)}
+                 className="flex items-center px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition"
+               >
+                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                 </svg>
+                 Kapat
+               </button>
+             </div>
+           </div>
+         </div>
+       </div>
+     )}
+
+      {/* YENİ: User Modal */}
+      {showUserModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800">
+                {editingUser ? 'Kullanıcı Düzenle' : 'Yeni Kullanıcı Ekle'}
+              </h3>
+              <button
+                onClick={() => setShowUserModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={saveUser} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">İsim</label>
+                  <input
+                    type="text"
+                    required
+                    value={userFormData.name}
+                    onChange={(e) => setUserFormData({...userFormData, name: e.target.value})}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Soyisim</label>
+                  <input
+                    type="text"
+                    required
+                    value={userFormData.surname}
+                    onChange={(e) => setUserFormData({...userFormData, surname: e.target.value})}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={userFormData.email}
+                  onChange={(e) => setUserFormData({...userFormData, email: e.target.value})}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
+                <input
+                  type="tel"
+                  required
+                  value={userFormData.phone}
+                  onChange={(e) => setUserFormData({...userFormData, phone: formatPhone(e.target.value)})}
+                  placeholder="0XXX XXX XX XX"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">TC Kimlik No</label>
+                <input
+                  type="text"
+                  value={userFormData.tcno}
+                  onChange={(e) => setUserFormData({...userFormData, tcno: e.target.value.replace(/\D/g, '').slice(0, 11)})}
+                  placeholder="11 haneli TC kimlik numarası"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+                <select
+                  value={userFormData.role}
+                  onChange={(e) => setUserFormData({...userFormData, role: e.target.value})}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                >
+                  <option value="user">Kullanıcı</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              {!editingUser && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Şifre</label>
+                  <input
+                    type="password"
+                    required
+                    value={userFormData.password}
+                    onChange={(e) => setUserFormData({...userFormData, password: e.target.value})}
+                    placeholder="En az 6 karakter"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
+              )}
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="submit"
+                  className="flex-1 bg-purple-600 text-white py-3 px-4 rounded-lg hover:bg-purple-700 transition"
+                >
+                  {editingUser ? 'Güncelle' : 'Ekle'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowUserModal(false)}
+                  className="flex-1 bg-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-400 transition"
+                >
+                  İptal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Response Modal */}
       {showResponseModal && selectedQuote && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-gray-800">Teklif Cevapla</h3>
+              <h3 className="text-xl font-bold text-gray-800">Teklif Cevabı Gönder</h3>
               <button
                 onClick={() => setShowResponseModal(false)}
                 className="text-gray-500 hover:text-gray-700"
@@ -787,286 +1491,69 @@ function Admin() {
               </button>
             </div>
 
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-700 mb-2">Teklif Detayları</h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="font-medium">Müşteri:</span> {selectedQuote.name}
-                </div>
-                <div>
-                  <span className="font-medium">Telefon:</span> {selectedQuote.phone}
-                </div>
-                <div>
-                  <span className="font-medium">Sigorta Türü:</span> {selectedQuote.insuranceType}
-                </div>
-                <div>
-                  <span className="font-medium">Tarih:</span> {selectedQuote.createdAt?.toDate?.()?.toLocaleDateString('tr-TR')}
-                </div>
-                {selectedQuote.plate && (
-                  <div>
-                    <span className="font-medium">Plaka:</span> {selectedQuote.plate}
-                  </div>
-                )}
-                {selectedQuote.tcno && (
-                  <div>
-                    <span className="font-medium">TC No:</span> {selectedQuote.tcno}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <form onSubmit={(e) => { e.preventDefault(); sendQuoteResponse(); }}>
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2 font-medium">Müşteri Açıklaması *</label>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Müşteriye Gönderilecek Açıklama *
+                </label>
                 <textarea
                   value={responseData.adminResponse}
                   onChange={(e) => setResponseData({...responseData, adminResponse: e.target.value})}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500 text-gray-900 bg-white"
-                  style={{ color: '#000000 !important' }}
-                  rows={4}
-                  placeholder="Müşteriye gönderilecek açıklama..."
-                  required
+                  className="w-full h-32 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="Teklif açıklamasını buraya yazın..."
                 />
               </div>
 
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2 font-medium">Fiyat Bilgisi (₺)</label>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fiyat (TL)
+                </label>
                 <input
                   type="number"
                   value={responseData.price}
                   onChange={(e) => setResponseData({...responseData, price: e.target.value})}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500 text-gray-900 bg-white"
-                  style={{ color: '#000000 !important' }}
-                  placeholder="Örn: 1500"
-                  min="0"
-                  step="0.01"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="0.00"
                 />
               </div>
 
-              <div className="mb-6">
-                <label className="block text-gray-700 mb-2 font-medium">Admin Notları (İç Kullanım)</label>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Admin Notları (İç kullanım)
+                </label>
                 <textarea
                   value={responseData.adminNotes}
                   onChange={(e) => setResponseData({...responseData, adminNotes: e.target.value})}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500 text-gray-900 bg-white"
-                  style={{ color: '#000000 !important' }}
-                  rows={3}
-                  placeholder="Sadece admin panelinde görünür notlar..."
+                  className="w-full h-24 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="İç notlarınızı buraya yazabilirsiniz..."
                 />
               </div>
 
-              <div className="flex space-x-4">
+              <div className="flex space-x-3 pt-4">
                 <button
-                  type="submit"
-                  className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
+                  onClick={sendQuoteResponse}
+                  className="flex-1 bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition"
                 >
                   Cevabı Gönder
                 </button>
                 <button
-                  type="button"
                   onClick={() => setShowResponseModal(false)}
-                  className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
+                  className="flex-1 bg-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-400 transition"
                 >
                   İptal
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Kart Bilgileri Görüntüleme Modal - Geliştirilmiş */}
-      {showCardInfoModal && selectedCardQuote && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-gray-800 flex items-center">
-                <svg className="w-6 h-6 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                </svg>
-                Kart Bilgileri
-              </h3>
-              <button
-                onClick={() => setShowCardInfoModal(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Teklif Özeti */}
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
-              <h4 className="font-semibold text-blue-800 mb-2 flex items-center">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Teklif Bilgileri
-              </h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="font-medium">Müşteri:</span> {selectedCardQuote.name}</div>
-                <div><span className="font-medium">Telefon:</span> {selectedCardQuote.phone}</div>
-                <div><span className="font-medium">Sigorta:</span> {selectedCardQuote.insuranceType}</div>
-                <div><span className="font-medium">Teklif ID:</span> <code className="bg-blue-200 px-1 rounded">{selectedCardQuote.id}</code></div>
-                {selectedCardQuote.price && (
-                  <div className="col-span-2">
-                    <span className="font-medium">Tutar:</span> 
-                    <span className="text-lg font-bold text-green-600 ml-2">
-                      {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(selectedCardQuote.price))}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Kart Bilgileri */}
-            {selectedCardQuote.paymentInfo && (
-              <div className="mb-6 p-6 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
-                <h4 className="font-semibold text-green-800 mb-4 flex items-center text-lg">
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                  </svg>
-                  💳 Kredi Kartı Bilgileri
-                </h4>
-                
-                {/* Kart Görselleştirmesi */}
-                <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 rounded-xl text-white mb-4 shadow-lg">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <p className="text-blue-100 text-sm">Kart Numarası</p>
-                      <p className="text-xl font-mono tracking-wider">
-                        {formatCardNumber(selectedCardQuote.paymentInfo.originalCardNumber || selectedCardQuote.paymentInfo.cardNumber)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-blue-100 text-sm">CVV</p>
-                      <p className="text-lg font-mono">
-                        {selectedCardQuote.paymentInfo.originalCvv || selectedCardQuote.paymentInfo.cvv}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-between items-end">
-                    <div>
-                      <p className="text-blue-100 text-sm">Kart Sahibi</p>
-                      <p className="text-lg font-semibold uppercase">
-                        {selectedCardQuote.paymentInfo.cardHolder}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-blue-100 text-sm">Son Kullanma</p>
-                      <p className="text-lg font-mono">
-                        {selectedCardQuote.paymentInfo.expiryDate}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Detaylı Bilgiler Tablosu */}
-                <div className="bg-white rounded-lg p-4 border">
-                  <table className="w-full">
-                    <tbody className="space-y-2">
-                      <tr className="border-b">
-                        <td className="py-2 pr-4 font-medium text-gray-600">Kart Numarası:</td>
-                        <td className="py-2 font-mono text-gray-800">
-                          {formatCardNumber(selectedCardQuote.paymentInfo.originalCardNumber || selectedCardQuote.paymentInfo.cardNumber)}
-                        </td>
-                      </tr>
-                      <tr className="border-b">
-                        <td className="py-2 pr-4 font-medium text-gray-600">Kart Sahibi:</td>
-                        <td className="py-2 text-gray-800 uppercase">
-                          {selectedCardQuote.paymentInfo.cardHolder}
-                        </td>
-                      </tr>
-                      <tr className="border-b">
-                        <td className="py-2 pr-4 font-medium text-gray-600">Son Kullanma:</td>
-                        <td className="py-2 font-mono text-gray-800">
-                          {selectedCardQuote.paymentInfo.expiryDate}
-                        </td>
-                      </tr>
-                      <tr className="border-b">
-                        <td className="py-2 pr-4 font-medium text-gray-600">CVV:</td>
-                        <td className="py-2 font-mono text-gray-800">
-                          {selectedCardQuote.paymentInfo.originalCvv || selectedCardQuote.paymentInfo.cvv}
-                        </td>
-                      </tr>
-                      <tr className="border-b">
-                        <td className="py-2 pr-4 font-medium text-gray-600">Taksit:</td>
-                        <td className="py-2 text-gray-800">
-                          <span className={`px-2 py-1 rounded text-sm ${
-                            selectedCardQuote.paymentInfo.installments === '1' 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {selectedCardQuote.paymentInfo.installments === '1' 
-                              ? '💰 Tek Çekim' 
-                              : `📅 ${selectedCardQuote.paymentInfo.installments} Taksit`
-                            }
-                          </span>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="py-2 pr-4 font-medium text-gray-600">Gönderim Tarihi:</td>
-                        <td className="py-2 text-gray-800">
-                          <span className="bg-gray-100 px-2 py-1 rounded text-sm">
-                            {selectedCardQuote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR')}
-                          </span>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Uyarı Mesajı */}
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-              <div className="flex">
-                <svg className="w-5 h-5 text-yellow-600 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                <div>
-                  <p className="text-yellow-800 font-medium">⚡ Acil İşlem Gerekli</p>
-                  <p className="text-yellow-700 text-sm mt-1">
-                    Bu bilgilerle ödemeyi hemen yapın ve belgeleri sisteme yükleyin. 
-                    Müşteri maksimum 30 dakika bekleyebilir.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* İşlem Butonları */}
-            <div className="flex space-x-4">
-              <button
-                onClick={() => {
-                  setShowCardInfoModal(false);
-                  handleDocumentUpload(selectedCardQuote);
-                }}
-                className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition flex items-center justify-center"
-              >
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Ödeme Yaptım, Belge Yükle
-              </button>
-              <button
-                onClick={() => setShowCardInfoModal(false)}
-                className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
-              >
-                Kapat
-              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Belge Yükleme Modal */}
+      {/* Upload Modal */}
       {showUploadModal && selectedQuote && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-gray-800">Belge Yükle</h3>
+              <h3 className="text-xl font-bold text-gray-800">Belge Yükle</h3>
               <button
                 onClick={() => setShowUploadModal(false)}
                 className="text-gray-500 hover:text-gray-700"
@@ -1077,119 +1564,163 @@ function Admin() {
               </button>
             </div>
 
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-              <h4 className="font-semibold text-blue-800 mb-2">Teklif Bilgileri</h4>
-              <div className="text-sm space-y-1">
-                <p><span className="font-medium">Müşteri:</span> {selectedQuote.name}</p>
-                <p><span className="font-medium">Sigorta:</span> {selectedQuote.insuranceType}</p>
-                <p><span className="font-medium">Teklif ID:</span> {selectedQuote.id}</p>
-                {selectedQuote.price && (
-                  <p><span className="font-medium">Ödenen Tutar:</span> {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(selectedQuote.price))}</p>
-                )}
-              </div>
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-gray-700 mb-2">Belge Dosyası (PDF, DOC, DOCX) *</label>
-              <div className="relative">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Dosya Seç (PDF, DOC, DOCX)
+                </label>
                 <input
                   type="file"
                   accept=".pdf,.doc,.docx"
                   onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  id="fileUpload"
-                  required
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
-                <div className="w-full px-4 py-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 transition-colors cursor-pointer bg-gray-50 hover:bg-gray-100">
-                  <div className="text-center">
-                    {uploadFile ? (
-                      <div className="flex items-center justify-center space-x-3">
-                        <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <div>
-                          <p className="text-gray-700 font-medium">{uploadFile.name}</p>
-                          <p className="text-sm text-gray-500">
-                            {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                        </svg>
-                        <p className="text-gray-600 mb-2">
-                          <span className="font-medium text-purple-600">Dosya seçmek için tıklayın</span>
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          PDF, DOC, DOCX formatlarında dosya yükleyebilirsiniz
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          Maksimum dosya boyutu: 10MB
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
               </div>
-              {uploadFile && (
-                <div className="mt-3 flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
-                  <div className="flex items-center space-x-2">
-                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-sm text-green-700 font-medium">Dosya seçildi: {uploadFile.name}</span>
+
+              {uploadProgress > 0 && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Yükleniyor...</span>
+                    <span>{uploadProgress}%</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUploadFile(null);
-                      const fileInput = document.getElementById('fileUpload') as HTMLInputElement;
-                      if (fileInput) fileInput.value = '';
-                    }}
-                    className="text-red-600 hover:text-red-800 p-1"
-                    title="Dosyayı kaldır"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-green-600 h-2 rounded-full transition-all duration-300" 
+                      style={{width: `${uploadProgress}%`}}
+                    ></div>
+                  </div>
                 </div>
               )}
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  onClick={uploadDocument}
+                  disabled={!uploadFile || uploadProgress > 0}
+                  className="flex-1 bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploadProgress > 0 ? 'Yükleniyor...' : 'Yükle'}
+                </button>
+                <button
+                  onClick={() => setShowUploadModal(false)}
+                  disabled={uploadProgress > 0}
+                  className="flex-1 bg-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-400 transition disabled:opacity-50"
+                >
+                  İptal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Card Info Modal */}
+      {showCardInfoModal && selectedCardQuote && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800">💳 Kart Bilgileri</h3>
+              <button
+                onClick={() => setShowCardInfoModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
-            {uploadProgress > 0 && (
-              <div className="mb-4">
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                    style={{ width: `${uploadProgress}%` }}
-                  ></div>
+            {selectedCardQuote.paymentInfo && (
+              <div className="space-y-4">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-blue-800 mb-3 text-center">💳 Ödeme Bilgileri</h4>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">Kart Sahibi:</label>
+                      <div className="bg-white p-2 rounded border font-semibold">
+                        {selectedCardQuote.paymentInfo.cardHolder}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">Kart Numarası:</label>
+                      <div className="bg-white p-2 rounded border font-mono text-lg">
+                        {formatCardNumber(selectedCardQuote.paymentInfo.cardNumber)}
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Son Kullanma:</label>
+                        <div className="bg-white p-2 rounded border font-mono">
+                          {selectedCardQuote.paymentInfo.expiryDate}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">CVV:</label>
+                        <div className="bg-white p-2 rounded border font-mono">
+                          {selectedCardQuote.paymentInfo.cvv}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">Taksit Seçimi:</label>
+                      <div className="bg-white p-2 rounded border font-semibold">
+                        {selectedCardQuote.paymentInfo.installments === '1' ? 
+                          '💰 Tek Çekim' : 
+                          `📅 ${selectedCardQuote.paymentInfo.installments} Taksit`
+                        }
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">Gönderim Tarihi:</label>
+                      <div className="bg-white p-2 rounded border text-sm">
+                        {selectedCardQuote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR') || 'Bilinmiyor'}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm text-gray-600 mt-1">Yükleniyor... {uploadProgress}%</p>
+
+                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                  <div className="flex items-start space-x-2">
+                    <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    <div>
+                      <p className="text-yellow-800 font-medium text-sm">🔒 Güvenlik Uyarısı</p>
+                      <p className="text-yellow-700 text-xs mt-1">
+                        Bu bilgiler hassas verilerdir. Lütfen güvenli şekilde saklayın ve yetkisiz kişilerle paylaşmayın.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        `Kart: ${selectedCardQuote.paymentInfo.cardNumber}\n` +
+                        `Kart Sahibi: ${selectedCardQuote.paymentInfo.cardHolder}\n` +
+                        `Son Kullanma: ${selectedCardQuote.paymentInfo.expiryDate}\n` +
+                        `CVV: ${selectedCardQuote.paymentInfo.cvv}\n` +
+                        `Taksit: ${selectedCardQuote.paymentInfo.installments === '1' ? 'Tek Çekim' : selectedCardQuote.paymentInfo.installments + ' Taksit'}`
+                      );
+                      toast.success('Kart bilgileri panoya kopyalandı!');
+                    }}
+                    className="flex-1 bg-blue-600 text-white py-2 px-3 rounded-lg hover:bg-blue-700 transition text-sm"
+                  >
+                    📋 Kopyala
+                  </button>
+                  <button
+                    onClick={() => setShowCardInfoModal(false)}
+                    className="flex-1 bg-gray-600 text-white py-2 px-3 rounded-lg hover:bg-gray-700 transition text-sm"
+                  >
+                    ✖️ Kapat
+                  </button>
+                </div>
               </div>
             )}
-
-            <div className="flex space-x-4">
-              <button
-                onClick={uploadDocument}
-                disabled={!uploadFile || uploadProgress > 0}
-                className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50"
-              >
-                {uploadProgress > 0 ? 'Yükleniyor...' : 'Belgeyi Yükle'}
-              </button>
-              <button
-                onClick={() => {
-                  setShowUploadModal(false);
-                  setUploadFile(null);
-                  setUploadProgress(0);
-                }}
-                className="flex-1 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition"
-              >
-                İptal
-              </button>
-            </div>
           </div>
         </div>
       )}

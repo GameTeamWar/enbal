@@ -62,9 +62,11 @@ export default function Register() {
     // Sadece rakamları al, maksimum 11 karakter
     const numbers = value.replace(/\D/g, '').slice(0, 11);
     
-    // Format: XXX XX XXX XX X
-    if (numbers.length > 8) {
+    // Format: XXX XX XXX XX XX (11 haneli için)
+    if (numbers.length === 11) {
       return numbers.replace(/(\d{3})(\d{2})(\d{3})(\d{2})(\d{1})/, '$1 $2 $3 $4 $5');
+    } else if (numbers.length > 8) {
+      return numbers.replace(/(\d{3})(\d{2})(\d{3})(\d{1,2})/, '$1 $2 $3 $4');
     } else if (numbers.length > 5) {
       return numbers.replace(/(\d{3})(\d{2})(\d{1,3})/, '$1 $2 $3');
     } else if (numbers.length > 3) {
@@ -468,10 +470,11 @@ export default function Register() {
                     }
                   }}
                   className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                  placeholder="XXX XX XXX XX X"
-                  maxLength={13}
+                  placeholder="XXX XX XXX XX XX"
+                  maxLength={15}
                   required
                 />
+                <p className="text-sm text-gray-500 mt-1">11 haneli TC kimlik numaranızı giriniz</p>
               </div>
 
               <div>
