@@ -1,3 +1,4 @@
+// app/layout.tsx - Hydration fix version
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
@@ -16,8 +17,55 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="tr">
-      <body className={inter.className}>
+    <html lang="tr" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Browser extension attribute cleanup
+              (function() {
+                // Remove browser extension attributes before React hydration
+                const observer = new MutationObserver(function(mutations) {
+                  mutations.forEach(function(mutation) {
+                    if (mutation.type === 'attributes') {
+                      const target = mutation.target;
+                      if (target.nodeType === 1) {
+                        // Remove common extension attributes
+                        const extensionAttrs = [
+                          'cz-shortcut-listen',
+                          'data-new-gr-c-s-check-loaded',
+                          'data-gr-ext-installed',
+                          'spellcheck'
+                        ];
+                        extensionAttrs.forEach(attr => {
+                          if (target.hasAttribute(attr)) {
+                            target.removeAttribute(attr);
+                          }
+                        });
+                      }
+                    }
+                  });
+                });
+                
+                // Start observing before React hydrates
+                if (typeof window !== 'undefined') {
+                  document.addEventListener('DOMContentLoaded', function() {
+                    observer.observe(document.body, {
+                      attributes: true,
+                      subtree: true,
+                      attributeFilter: ['cz-shortcut-listen', 'data-new-gr-c-s-check-loaded', 'data-gr-ext-installed']
+                    });
+                  });
+                }
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body 
+        className={inter.className}
+        suppressHydrationWarning
+      >
         {children}
         <Toaster position="top-right" />
       </body>

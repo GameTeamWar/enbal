@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, query, getDocs, doc, getDoc, deleteDoc, updateDoc, onSnapshot, orderBy, addDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-// Firebase config'i lib/firebase.ts'ten import et
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -80,7 +79,6 @@ function Admin() {
         }
       });
       
-      // Yeni teklif kontrolü ve sesli bildirim
       if (quotes.length > 0 && quotesData.length > quotes.length) {
         const newQuote = quotesData[0];
         if (newQuote.status === 'pending' && audioEnabled && notificationSound) {
@@ -170,7 +168,6 @@ function Admin() {
         responseDate: new Date()
       });
 
-      // Kullanıcıya bildirim gönder
       await sendUserNotification(selectedQuote.userId, {
         type: 'quote_response',
         quoteId: selectedQuote.id,
@@ -202,50 +199,91 @@ function Admin() {
     });
 
     try {
-      setUploadProgress(10);
+      setUploadProgress(0);
       
-      // Firebase Storage bağlantısını test et
-      console.log('📦 Storage instance:', storage);
-      console.log('🔗 Storage bucket:', storage.app.options.storageBucket);
+      // İlk kontroller
+      console.log('📦 Storage instance kontrol ediliyor...');
+      setUploadProgress(5);
       
       if (!storage.app.options.storageBucket) {
         throw new Error('Firebase Storage bucket yapılandırılmamış!');
       }
       
-      // Firebase Storage'a dosya yükle
-      const storageRef = ref(storage, `documents/${selectedQuote.id}/${Date.now()}_${uploadFile.name}`);
+      console.log('✅ Storage bucket OK:', storage.app.options.storageBucket);
+      setUploadProgress(10);
+      
+      // Storage reference oluştur
+      const timestamp = Date.now();
+      const fileName = `${timestamp}_${uploadFile.name}`;
+      const storageRef = ref(storage, `documents/${selectedQuote.id}/${fileName}`);
       console.log('📂 Storage ref oluşturuldu:', storageRef.fullPath);
       
-      setUploadProgress(30);
+      setUploadProgress(15);
       
-      // Dosya yükleme
-      console.log('⬆️ Dosya yükleniyor...');
-      const snapshot = await uploadBytes(storageRef, uploadFile);
-      console.log('✅ Dosya yüklendi:', snapshot.ref.fullPath);
+      // Upload task başlat - Resumable upload kullan
+      console.log('⬆️ Dosya yükleme başlatılıyor...');
+      const uploadTask = uploadBytesResumable(storageRef, uploadFile);
       
-      setUploadProgress(70);
+      // Upload progress'ini dinle
+      await new Promise((resolve, reject) => {
+        uploadTask.on('state_changed',
+          (snapshot) => {
+            // Progress hesaplama
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            const adjustedProgress = 15 + (progress * 0.5); // 15% başlangıç + %50 upload
+            setUploadProgress(Math.round(adjustedProgress));
+            
+            console.log(`📊 Upload progress: ${progress.toFixed(1)}% (${snapshot.bytesTransferred}/${snapshot.totalBytes} bytes)`);
+            
+            switch (snapshot.state) {
+              case 'paused':
+                console.log('⏸️ Upload paused');
+                break;
+              case 'running':
+                console.log('🔄 Upload running');
+                break;
+            }
+          },
+          (error) => {
+            // Hata durumu
+            console.error('❌ Upload error:', error);
+            setUploadProgress(0);
+            reject(error);
+          },
+          () => {
+            // Başarılı upload
+            console.log('✅ Upload completed successfully');
+            setUploadProgress(70);
+            resolve(uploadTask.snapshot);
+          }
+        );
+      });
       
-      // Download URL alma
+      // Download URL al
       console.log('🔗 Download URL alınıyor...');
-      const downloadURL = await getDownloadURL(snapshot.ref);
+      setUploadProgress(75);
+      const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
       console.log('✅ Download URL alındı:', downloadURL);
       
-      setUploadProgress(90);
+      setUploadProgress(85);
       
       // Firestore'u güncelle
       console.log('💾 Firestore güncelleniyor...');
       await updateDoc(doc(db, 'quotes', selectedQuote.id), {
         documentUrl: downloadURL,
         documentName: uploadFile.name,
-        documentPath: snapshot.ref.fullPath, // Storage path'i de kaydet
+        documentPath: uploadTask.snapshot.ref.fullPath,
+        documentSize: uploadFile.size,
         awaitingProcessing: false,
         documentUploadDate: new Date(),
         customerStatus: 'completed'
       });
       
       console.log('✅ Firestore güncellendi');
+      setUploadProgress(95);
 
-      // Kullanıcıya belge hazır bildirimi gönder
+      // Kullanıcıya bildirim gönder
+      console.log('📧 Kullanıcı bildirimi gönderiliyor...');
       await sendUserNotification(selectedQuote.userId, {
         type: 'document_ready',
         quoteId: selectedQuote.id,
@@ -255,57 +293,67 @@ function Admin() {
       });
 
       setUploadProgress(100);
-      toast.success('Belge başarıyla yüklendi!');
+      console.log('🎉 Tüm işlemler tamamlandı!');
+      toast.success('🎉 Belge başarıyla yüklendi ve müşteriye bildirildi!');
       
-      // Modal'ı kapat ve state'i temizle
+      // Modal'ı kapat
       setTimeout(() => {
         setShowUploadModal(false);
         setSelectedQuote(null);
         setUploadFile(null);
         setUploadProgress(0);
-      }, 1000);
+      }, 2000);
       
     } catch (error: any) {
       console.error('❌ Belge yükleme hatası:', error);
       
-      // Detaylı hata mesajları
-      let errorMessage = 'Belge yüklenemedi!';
+      // Progress'i sıfırla
+      setUploadProgress(0);
+      
+      let errorMessage = 'Belge yüklenirken hata oluştu!';
       
       if (error.code) {
         switch (error.code) {
           case 'storage/unauthorized':
-            errorMessage = 'Storage yetkilendirme hatası! Firebase kurallarını kontrol edin.';
+            errorMessage = '🔒 Yetkilendirme hatası! Firebase Security Rules kontrol edilmeli.';
             break;
           case 'storage/canceled':
-            errorMessage = 'Dosya yükleme iptal edildi.';
+            errorMessage = '❌ Dosya yükleme iptal edildi.';
             break;
           case 'storage/unknown':
-            errorMessage = 'Bilinmeyen storage hatası! Ağ bağlantınızı kontrol edin.';
+            errorMessage = '🌐 Ağ bağlantı hatası! İnternet bağlantınızı kontrol edin.';
             break;
           case 'storage/invalid-format':
-            errorMessage = 'Geçersiz dosya formatı!';
+            errorMessage = '📄 Geçersiz dosya formatı! PDF, DOC veya DOCX dosyası seçin.';
             break;
           case 'storage/invalid-checksum':
-            errorMessage = 'Dosya bozuk! Lütfen tekrar deneyin.';
+            errorMessage = '💾 Dosya bozuk! Lütfen farklı bir dosya deneyin.';
+            break;
+          case 'storage/retry-limit-exceeded':
+            errorMessage = '⏰ Yükleme zaman aşımı! Lütfen tekrar deneyin.';
+            break;
+          case 'storage/quota-exceeded':
+            errorMessage = '💽 Depolama alanı dolu! Admin ile iletişime geçin.';
             break;
           default:
-            errorMessage = `Storage hatası: ${error.code}`;
+            errorMessage = `🔥 Firebase Storage hatası: ${error.code}`;
         }
       } else if (error.message) {
-        errorMessage = error.message;
+        errorMessage = `❌ Hata: ${error.message}`;
       }
       
       toast.error(errorMessage);
-      setUploadProgress(0);
       
       // Debug için detaylı log
       console.error('Hata detayları:', {
-        code: error.code,
-        message: error.message,
-        stack: error.stack,
+        errorCode: error.code,
+        errorMessage: error.message,
+        errorStack: error.stack,
         storageBucket: storage.app.options.storageBucket,
         fileName: uploadFile.name,
-        fileSize: uploadFile.size
+        fileSize: uploadFile.size,
+        fileType: uploadFile.type,
+        quoteId: selectedQuote.id
       });
     }
   };
@@ -339,7 +387,6 @@ function Admin() {
     if (!userId) return;
 
     try {
-      // 1. Firestore'a bildirim kaydet (normal bildirim)
       await addDoc(collection(db, 'notifications'), {
         userId,
         ...notificationData,
@@ -347,7 +394,6 @@ function Admin() {
         createdAt: new Date()
       });
 
-      // 2. Browser notification tetikle (real-time sistem için)
       await fetch('/api/trigger-browser-notification', {
         method: 'POST',
         headers: {
@@ -369,7 +415,6 @@ function Admin() {
     }
   };
 
-  // Bildirim başlığı oluştur
   const getNotificationTitle = (type: string): string => {
     switch (type) {
       case 'quote_response':
@@ -383,7 +428,6 @@ function Admin() {
     }
   };
 
-  // Bildirim mesajı oluştur
   const getNotificationMessage = (notificationData: any): string => {
     switch (notificationData.type) {
       case 'quote_response':
@@ -442,16 +486,36 @@ function Admin() {
     );
   };
 
-  // Firebase Storage test fonksiyonu
+  // Kart numarasını formatla
+  const formatCardNumber = (cardNumber: string) => {
+    if (!cardNumber) return '';
+    // 16 haneli kart numarasını 4'lü gruplar halinde göster
+    return cardNumber.replace(/(\d{4})(?=\d)/g, '$1 ');
+  };
+
+  // Kart numarasını maskele
+  const maskCardNumber = (cardNumber: string) => {
+    if (!cardNumber) return '';
+    const cleanNumber = cardNumber.replace(/\s/g, '');
+    if (cleanNumber.length >= 4) {
+      return '**** **** **** ' + cleanNumber.slice(-4);
+    }
+    return cardNumber;
+  };
+
+  // CVV'yi maskele
+  const maskCVV = (cvv: string) => {
+    if (!cvv) return '';
+    return '***';
+  };
+
   const testFirebaseStorage = async () => {
     try {
       console.log('🔄 Firebase Storage test başlıyor...');
       
-      // Test file oluştur
       const testContent = new Blob(['Test file content'], { type: 'text/plain' });
       const testFile = new File([testContent], 'test.txt', { type: 'text/plain' });
       
-      // Storage ref oluştur
       const testRef = ref(storage, `test/${Date.now()}_test.txt`);
       
       console.log('📦 Storage config:', {
@@ -460,11 +524,9 @@ function Admin() {
         path: testRef.fullPath
       });
       
-      // Test upload
       const snapshot = await uploadBytes(testRef, testFile);
       console.log('✅ Test upload başarılı:', snapshot.ref.fullPath);
       
-      // Download URL al
       const downloadURL = await getDownloadURL(snapshot.ref);
       console.log('✅ Download URL alındı:', downloadURL);
       
@@ -631,9 +693,12 @@ function Admin() {
                                 <>
                                   <button
                                     onClick={() => handleCardInfo(quote)}
-                                    className="text-blue-600 hover:text-blue-800 font-medium"
+                                    className="text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1"
                                   >
-                                    Kart Bilgilerini Gör
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                                    </svg>
+                                    <span>Kart Bilgilerini Gör</span>
                                   </button>
                                   <button
                                     onClick={() => handleDocumentUpload(quote)}
@@ -706,7 +771,7 @@ function Admin() {
         </div>
       </div>
 
-      {/* Teklif Cevaplama Modal */}
+      {/* Teklif Cevaplama Modal - Geliştirilmiş */}
       {showResponseModal && selectedQuote && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -752,11 +817,12 @@ function Admin() {
 
             <form onSubmit={(e) => { e.preventDefault(); sendQuoteResponse(); }}>
               <div className="mb-4">
-                <label className="block text-gray-700 mb-2">Müşteri Açıklaması *</label>
+                <label className="block text-gray-700 mb-2 font-medium">Müşteri Açıklaması *</label>
                 <textarea
                   value={responseData.adminResponse}
                   onChange={(e) => setResponseData({...responseData, adminResponse: e.target.value})}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500 text-gray-900 bg-white"
+                  style={{ color: '#000000 !important' }}
                   rows={4}
                   placeholder="Müşteriye gönderilecek açıklama..."
                   required
@@ -764,12 +830,13 @@ function Admin() {
               </div>
 
               <div className="mb-4">
-                <label className="block text-gray-700 mb-2">Fiyat Bilgisi (₺)</label>
+                <label className="block text-gray-700 mb-2 font-medium">Fiyat Bilgisi (₺)</label>
                 <input
                   type="number"
                   value={responseData.price}
                   onChange={(e) => setResponseData({...responseData, price: e.target.value})}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500 text-gray-900 bg-white"
+                  style={{ color: '#000000 !important' }}
                   placeholder="Örn: 1500"
                   min="0"
                   step="0.01"
@@ -777,11 +844,12 @@ function Admin() {
               </div>
 
               <div className="mb-6">
-                <label className="block text-gray-700 mb-2">Admin Notları (İç Kullanım)</label>
+                <label className="block text-gray-700 mb-2 font-medium">Admin Notları (İç Kullanım)</label>
                 <textarea
                   value={responseData.adminNotes}
                   onChange={(e) => setResponseData({...responseData, adminNotes: e.target.value})}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500 text-gray-900 bg-white"
+                  style={{ color: '#000000 !important' }}
                   rows={3}
                   placeholder="Sadece admin panelinde görünür notlar..."
                 />
@@ -807,12 +875,17 @@ function Admin() {
         </div>
       )}
 
-      {/* Kart Bilgileri Görüntüleme Modal */}
+      {/* Kart Bilgileri Görüntüleme Modal - Geliştirilmiş */}
       {showCardInfoModal && selectedCardQuote && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full">
+          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-gray-800">💳 Kart Bilgileri</h3>
+              <h3 className="text-2xl font-bold text-gray-800 flex items-center">
+                <svg className="w-6 h-6 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                Kart Bilgileri
+              </h3>
               <button
                 onClick={() => setShowCardInfoModal(false)}
                 className="text-gray-500 hover:text-gray-700"
@@ -823,74 +896,158 @@ function Admin() {
               </button>
             </div>
 
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-              <h4 className="font-semibold text-blue-800 mb-2">Teklif Bilgileri</h4>
-              <div className="text-sm space-y-1">
-                <p><span className="font-medium">Müşteri:</span> {selectedCardQuote.name}</p>
-                <p><span className="font-medium">Sigorta:</span> {selectedCardQuote.insuranceType}</p>
-                <p><span className="font-medium">Teklif ID:</span> {selectedCardQuote.id}</p>
+            {/* Teklif Özeti */}
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+              <h4 className="font-semibold text-blue-800 mb-2 flex items-center">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Teklif Bilgileri
+              </h4>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="font-medium">Müşteri:</span> {selectedCardQuote.name}</div>
+                <div><span className="font-medium">Telefon:</span> {selectedCardQuote.phone}</div>
+                <div><span className="font-medium">Sigorta:</span> {selectedCardQuote.insuranceType}</div>
+                <div><span className="font-medium">Teklif ID:</span> <code className="bg-blue-200 px-1 rounded">{selectedCardQuote.id}</code></div>
                 {selectedCardQuote.price && (
-                  <p><span className="font-medium">Tutar:</span> {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(selectedCardQuote.price))}</p>
+                  <div className="col-span-2">
+                    <span className="font-medium">Tutar:</span> 
+                    <span className="text-lg font-bold text-green-600 ml-2">
+                      {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(selectedCardQuote.price))}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
 
+            {/* Kart Bilgileri */}
             {selectedCardQuote.paymentInfo && (
-              <div className="mb-6 p-4 bg-green-50 rounded-lg border">
-                <h4 className="font-semibold text-green-800 mb-3">💳 Kart Bilgileri</h4>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="font-medium text-gray-600">Kart Numarası:</span>
-                    <span className="font-mono text-gray-800">{selectedCardQuote.paymentInfo.originalCardNumber || selectedCardQuote.paymentInfo.cardNumber}</span>
+              <div className="mb-6 p-6 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
+                <h4 className="font-semibold text-green-800 mb-4 flex items-center text-lg">
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                  </svg>
+                  💳 Kredi Kartı Bilgileri
+                </h4>
+                
+                {/* Kart Görselleştirmesi */}
+                <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 rounded-xl text-white mb-4 shadow-lg">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <p className="text-blue-100 text-sm">Kart Numarası</p>
+                      <p className="text-xl font-mono tracking-wider">
+                        {formatCardNumber(selectedCardQuote.paymentInfo.originalCardNumber || selectedCardQuote.paymentInfo.cardNumber)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-blue-100 text-sm">CVV</p>
+                      <p className="text-lg font-mono">
+                        {selectedCardQuote.paymentInfo.originalCvv || selectedCardQuote.paymentInfo.cvv}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium text-gray-600">Kart Sahibi:</span>
-                    <span className="text-gray-800">{selectedCardQuote.paymentInfo.cardHolder}</span>
+                  
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <p className="text-blue-100 text-sm">Kart Sahibi</p>
+                      <p className="text-lg font-semibold uppercase">
+                        {selectedCardQuote.paymentInfo.cardHolder}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-blue-100 text-sm">Son Kullanma</p>
+                      <p className="text-lg font-mono">
+                        {selectedCardQuote.paymentInfo.expiryDate}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium text-gray-600">Son Kullanma:</span>
-                    <span className="font-mono text-gray-800">{selectedCardQuote.paymentInfo.expiryDate}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium text-gray-600">CVV:</span>
-                    <span className="font-mono text-gray-800">{selectedCardQuote.paymentInfo.originalCvv || selectedCardQuote.paymentInfo.cvv}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium text-gray-600">Taksit:</span>
-                    <span className="text-gray-800">
-                      {selectedCardQuote.paymentInfo.installments === '1' ? 'Tek Çekim' : selectedCardQuote.paymentInfo.installments + ' Taksit'}
-                    </span>
-                  </div>
-                  <div className="pt-2 border-t">
-                    <span className="font-medium text-gray-600">Gönderim Tarihi:</span>
-                    <span className="text-gray-800 ml-2">
-                      {selectedCardQuote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR')}
-                    </span>
-                  </div>
+                </div>
+
+                {/* Detaylı Bilgiler Tablosu */}
+                <div className="bg-white rounded-lg p-4 border">
+                  <table className="w-full">
+                    <tbody className="space-y-2">
+                      <tr className="border-b">
+                        <td className="py-2 pr-4 font-medium text-gray-600">Kart Numarası:</td>
+                        <td className="py-2 font-mono text-gray-800">
+                          {formatCardNumber(selectedCardQuote.paymentInfo.originalCardNumber || selectedCardQuote.paymentInfo.cardNumber)}
+                        </td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2 pr-4 font-medium text-gray-600">Kart Sahibi:</td>
+                        <td className="py-2 text-gray-800 uppercase">
+                          {selectedCardQuote.paymentInfo.cardHolder}
+                        </td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2 pr-4 font-medium text-gray-600">Son Kullanma:</td>
+                        <td className="py-2 font-mono text-gray-800">
+                          {selectedCardQuote.paymentInfo.expiryDate}
+                        </td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2 pr-4 font-medium text-gray-600">CVV:</td>
+                        <td className="py-2 font-mono text-gray-800">
+                          {selectedCardQuote.paymentInfo.originalCvv || selectedCardQuote.paymentInfo.cvv}
+                        </td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2 pr-4 font-medium text-gray-600">Taksit:</td>
+                        <td className="py-2 text-gray-800">
+                          <span className={`px-2 py-1 rounded text-sm ${
+                            selectedCardQuote.paymentInfo.installments === '1' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {selectedCardQuote.paymentInfo.installments === '1' 
+                              ? '💰 Tek Çekim' 
+                              : `📅 ${selectedCardQuote.paymentInfo.installments} Taksit`
+                            }
+                          </span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 pr-4 font-medium text-gray-600">Gönderim Tarihi:</td>
+                        <td className="py-2 text-gray-800">
+                          <span className="bg-gray-100 px-2 py-1 rounded text-sm">
+                            {selectedCardQuote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR')}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
 
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-              <div className="flex items-start">
-                <svg className="w-5 h-5 text-yellow-600 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            {/* Uyarı Mesajı */}
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+              <div className="flex">
+                <svg className="w-5 h-5 text-yellow-600 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                 </svg>
                 <div>
-                  <p className="text-yellow-800 font-medium">Bu bilgilerle ödemeyi yapın</p>
-                  <p className="text-yellow-700 text-sm mt-1">Ödeme yaptıktan sonra belgeleri sisteme yükleyin. Müşteri 30 dakika bekleme süresinde.</p>
+                  <p className="text-yellow-800 font-medium">⚡ Acil İşlem Gerekli</p>
+                  <p className="text-yellow-700 text-sm mt-1">
+                    Bu bilgilerle ödemeyi hemen yapın ve belgeleri sisteme yükleyin. 
+                    Müşteri maksimum 30 dakika bekleyebilir.
+                  </p>
                 </div>
               </div>
             </div>
 
+            {/* İşlem Butonları */}
             <div className="flex space-x-4">
               <button
                 onClick={() => {
                   setShowCardInfoModal(false);
                   handleDocumentUpload(selectedCardQuote);
                 }}
-                className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
+                className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition flex items-center justify-center"
               >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
                 Ödeme Yaptım, Belge Yükle
               </button>
               <button
@@ -934,16 +1091,70 @@ function Admin() {
 
             <div className="mb-6">
               <label className="block text-gray-700 mb-2">Belge Dosyası (PDF, DOC, DOCX) *</label>
-              <input
-                type="file"
-                accept=".pdf,.doc,.docx"
-                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
-                required
-              />
+              <div className="relative">
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  id="fileUpload"
+                  required
+                />
+                <div className="w-full px-4 py-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 transition-colors cursor-pointer bg-gray-50 hover:bg-gray-100">
+                  <div className="text-center">
+                    {uploadFile ? (
+                      <div className="flex items-center justify-center space-x-3">
+                        <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                          <p className="text-gray-700 font-medium">{uploadFile.name}</p>
+                          <p className="text-sm text-gray-500">
+                            {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p className="text-gray-600 mb-2">
+                          <span className="font-medium text-purple-600">Dosya seçmek için tıklayın</span>
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          PDF, DOC, DOCX formatlarında dosya yükleyebilirsiniz
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Maksimum dosya boyutu: 10MB
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
               {uploadFile && (
-                <div className="mt-2 text-sm text-gray-600">
-                  Seçilen dosya: {uploadFile.name}
+                <div className="mt-3 flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center space-x-2">
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm text-green-700 font-medium">Dosya seçildi: {uploadFile.name}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUploadFile(null);
+                      const fileInput = document.getElementById('fileUpload') as HTMLInputElement;
+                      if (fileInput) fileInput.value = '';
+                    }}
+                    className="text-red-600 hover:text-red-800 p-1"
+                    title="Dosyayı kaldır"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
               )}
             </div>
@@ -986,5 +1197,4 @@ function Admin() {
   );
 }
 
-// Export the component as default
 export default Admin;

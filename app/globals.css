@@ -19,3 +19,78 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Input ve form elementleri için metin rengini zorunlu olarak siyah yap */
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+input[type="url"],
+textarea,
+select {
+  color: #000000 !important; /* Zorunlu siyah metin */
+  background-color: #ffffff !important; /* Zorunlu beyaz arkaplan */
+}
+
+/* Placeholder metinleri için gri renk */
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280 !important; /* Gri placeholder */
+  opacity: 1;
+}
+
+/* Focus durumunda da siyah metin */
+input:focus,
+textarea:focus,
+select:focus {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+}
+
+/* Disabled durumundaki inputlar için */
+input:disabled,
+textarea:disabled,
+select:disabled {
+  color: #6b7280 !important;
+  background-color: #f3f4f6 !important;
+}
+
+/* Özel dark mode override'ları */
+@media (prefers-color-scheme: dark) {
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="password"],
+  input[type="number"],
+  input[type="date"],
+  input[type="url"],
+  textarea,
+  select {
+    color: #000000 !important; /* Dark mode'da bile siyah */
+    background-color: #ffffff !important; /* Dark mode'da bile beyaz arkaplan */
+  }
+  
+  input::placeholder,
+  textarea::placeholder {
+    color: #6b7280 !important;
+  }
+}
+
+/* Autofill durumları için özel stiller */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #ffffff inset !important;
+  -webkit-text-fill-color: #000000 !important;
+}
+
+/* Firefox autofill */
+input:-moz-autofill,
+input:-moz-autofill:hover,
+input:-moz-autofill:focus {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+}

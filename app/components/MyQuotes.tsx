@@ -456,7 +456,7 @@ export default function MyQuotes() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm text-black">
                         <div>
                           <span className="font-medium text-gray-600">Müşteri:</span>
                           <p>{quote.name}</p>
@@ -589,8 +589,8 @@ export default function MyQuotes() {
                 </button>
               </div>
 
-              <div className="mb-6 p-4 bg-green-50 rounded-lg">
-                <h4 className="font-semibold text-green-800 mb-2">Teklif Özeti</h4>
+              <div className="mb-6 p-4 bg-green-500 rounded-lg">
+                <h4 className="font-semibold text-green-40 mb-2">Teklif Özeti</h4>
                 <div className="text-sm space-y-1">
                   <p><span className="font-medium">Sigorta:</span> {selectedQuote.insuranceType}</p>
                   <p><span className="font-medium">Tutar:</span> {formatPrice(selectedQuote.price)}</p>
