@@ -109,12 +109,26 @@ export default function MyQuotes() {
   };
 
   const acceptQuote = async (quote: any) => {
+    console.log('🎯 acceptQuote çağrıldı:', {
+      quoteId: quote.id,
+      price: quote.price,
+      maxInstallments: quote.maxInstallments,
+      status: quote.status
+    });
+    
     if (!quote.price) {
       toast.error('Bu teklif için fiyat bilgisi bulunmuyor!');
       return;
     }
     
     setSelectedQuote(quote);
+    setPaymentData({
+      cardNumber: '',
+      expiryDate: '',
+      cvv: '',
+      cardHolder: '',
+      installments: '1'
+    });
     setShowPaymentModal(true);
   };
 
@@ -135,12 +149,57 @@ export default function MyQuotes() {
     }
   };
 
+  // Taksit seçenekleri oluşturma fonksiyonu
+  const generateInstallmentOptions = (maxInstallments: number = 1) => {
+    console.log('🔍 generateInstallmentOptions çağrıldı:', { maxInstallments });
+    
+    const options = [];
+    
+    // Tek çekim her zaman ilk seçenek
+    options.push({ value: '1', label: 'Tek Çekim' });
+    
+    // maxInstallments kontrolü
+    if (!maxInstallments || maxInstallments <= 1) {
+      console.log('⚠️ maxInstallments 1 veya undefined, sadece tek çekim döndürülüyor');
+      return options;
+    }
+    
+    // Diğer taksit seçenekleri (admin'in belirlediği maksimuma kadar)
+    const standardInstallments = [2, 3, 6, 9, 12, 18, 24];
+    
+    for (const installment of standardInstallments) {
+      if (installment <= maxInstallments) {
+        options.push({ 
+          value: installment.toString(), 
+          label: `${installment} Taksit` 
+        });
+        console.log(`✅ Taksit eklendi: ${installment}`);
+      }
+    }
+    
+    console.log('📋 Final options:', options);
+    return options;
+  };
+
+  // Taksit tutarını hesaplama
+  const calculateInstallmentAmount = (totalPrice: string, installments: string) => {
+    if (!totalPrice || !installments) return 0;
+    const total = parseFloat(totalPrice);
+    const installmentCount = parseInt(installments);
+    return installmentCount > 1 ? total / installmentCount : total;
+  };
+
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!selectedQuote) return;
 
     try {
+      // Taksit tutarını hesapla
+      const totalAmount = parseFloat(selectedQuote.price);
+      const installmentCount = parseInt(paymentData.installments);
+      const installmentAmount = installmentCount > 1 ? totalAmount / installmentCount : totalAmount;
+
       // Kart bilgilerini ve durumu güncelle
       await updateDoc(doc(db, 'quotes', selectedQuote.id), {
         customerStatus: 'card_submitted',
@@ -152,6 +211,8 @@ export default function MyQuotes() {
           cvv: '***',
           originalCvv: paymentData.cvv,
           installments: paymentData.installments,
+          installmentAmount: installmentAmount.toFixed(2),
+          totalAmount: totalAmount.toFixed(2),
           submissionDate: new Date()
         },
         customerResponseDate: new Date(),
@@ -174,12 +235,16 @@ export default function MyQuotes() {
             cardHolder: paymentData.cardHolder,
             expiryDate: paymentData.expiryDate,
             cvv: paymentData.cvv,
-            installments: paymentData.installments
+            installments: paymentData.installments,
+            installmentAmount: installmentAmount.toFixed(2),
+            totalAmount: totalAmount.toFixed(2)
           }
         }),
       });
 
-      toast.success('Kart bilgileriniz alınmıştır! 30 dakika içinde belgeleriniz hazırlanacak.');
+      const installmentText = installmentCount === 1 ? 'tek çekim' : `${installmentCount} taksit`;
+      toast.success(`Kart bilgileriniz alınmıştır! ${installmentText} seçiminiz kaydedildi. 30 dakika içinde belgeleriniz hazırlanacak.`);
+      
       setShowPaymentModal(false);
       setSelectedQuote(null);
       setPaymentData({
@@ -449,8 +514,16 @@ export default function MyQuotes() {
                         <div className="text-right">
                           {getStatusBadge(quote)}
                           {quote.price && (
-                            <div className="mt-2 text-2xl font-bold text-green-600">
-                              {formatPrice(quote.price)}
+                            <div className="mt-2">
+                              <div className="text-2xl font-bold text-green-600">
+                                {formatPrice(quote.price)}
+                              </div>
+                              {/* Taksit bilgisi gösterimi */}
+                              {quote.maxInstallments && quote.maxInstallments > 1 && (
+                                <div className="text-sm text-blue-600 font-medium">
+                                  {quote.maxInstallments} taksit'e kadar
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -488,6 +561,37 @@ export default function MyQuotes() {
                               Cevap Tarihi: {quote.responseDate?.toDate?.()?.toLocaleDateString('tr-TR')}
                             </p>
                           )}
+                          {/* Taksit detayları */}
+                          {quote.maxInstallments && quote.maxInstallments > 1 && (
+                            <div className="mt-3 p-3 bg-white rounded border">
+                              <h5 className="font-medium text-green-900 mb-2">
+                                Taksit Seçenekleri: (Max: {quote.maxInstallments})
+                              </h5>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm text-green-800">
+                                {generateInstallmentOptions(quote.maxInstallments).slice(0, 6).map(option => (
+                                  <div key={option.value} className="text-center p-2 bg-green-50 rounded">
+                                    <div className="font-medium">{option.label}</div>
+                                    {option.value !== '1' && (
+                                      <div className="text-green-600 text-xs">
+                                        {formatPrice(calculateInstallmentAmount(quote.price, option.value))} × {option.value}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                              {generateInstallmentOptions(quote.maxInstallments).length > 6 && (
+                                <div className="mt-2 text-xs text-green-600">
+                                  + {generateInstallmentOptions(quote.maxInstallments).length - 6} seçenek daha...
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {/* Eğer maxInstallments yoksa veya 1 ise */}
+                          {(!quote.maxInstallments || quote.maxInstallments <= 1) && (
+                            <div className="mt-2 text-xs text-gray-500">
+                              Sadece tek çekim mevcut
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -508,6 +612,15 @@ export default function MyQuotes() {
                           ) : (
                             <>
                               <p className="text-blue-700">Kart bilgileriniz alınmıştır. 30 dakika içinde belgeleriniz hazırlanacak.</p>
+                              {/* Ödeme detayları */}
+                              {quote.paymentInfo && (
+                                <div className="mt-2 text-sm text-blue-600">
+                                  <p>Ödeme: {quote.paymentInfo.installments === '1' ? 'Tek Çekim' : `${quote.paymentInfo.installments} Taksit`}</p>
+                                  {quote.paymentInfo.installments !== '1' && (
+                                    <p>Aylık: {formatPrice(quote.paymentInfo.installmentAmount)} × {quote.paymentInfo.installments} = {formatPrice(quote.paymentInfo.totalAmount)}</p>
+                                  )}
+                                </div>
+                              )}
                               <div className="mt-2 text-sm text-blue-600">
                                 Gönderim: {quote.customerResponseDate?.toDate?.()?.toLocaleString('tr-TR')}
                               </div>
@@ -573,7 +686,7 @@ export default function MyQuotes() {
           </div>
         </div>
 
-        {/* Ödeme Modal */}
+        {/* Ödeme Modal - Gelişmiş Taksit Sistemi */}
         {showPaymentModal && selectedQuote && (
           <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
@@ -589,11 +702,21 @@ export default function MyQuotes() {
                 </button>
               </div>
 
-              <div className="mb-6 p-4 bg-green-500 rounded-lg">
-                <h4 className="font-semibold text-green-40 mb-2">Teklif Özeti</h4>
-                <div className="text-sm space-y-1">
+              <div className="mb-6 p-4 bg-green-50 rounded-lg border border-green-200">
+                <h4 className="font-semibold text-green-800 mb-2">Teklif Özeti</h4>
+                <div className="text-sm space-y-1 text-gray-700">
                   <p><span className="font-medium">Sigorta:</span> {selectedQuote.insuranceType}</p>
-                  <p><span className="font-medium">Tutar:</span> {formatPrice(selectedQuote.price)}</p>
+                  <p><span className="font-medium">Toplam Tutar:</span> {formatPrice(selectedQuote.price)}</p>
+                  <p><span className="font-medium">Maks Taksit:</span> {selectedQuote.maxInstallments || 1}</p>
+                  {selectedQuote.maxInstallments && selectedQuote.maxInstallments > 1 && (
+                    <p><span className="font-medium">Taksit Seçenekleri:</span> {selectedQuote.maxInstallments} taksit'e kadar</p>
+                  )}
+                  {/* Debug info */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <p className="text-xs text-gray-500">
+                      Debug - maxInstallments: {JSON.stringify(selectedQuote.maxInstallments)}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -656,28 +779,107 @@ export default function MyQuotes() {
                   />
                 </div>
 
-                <div className="mb-6">
-                  <label className="block text-gray-700 mb-2">Taksit Sayısı</label>
+                <div className="mb-4">
+                  <label className="block text-gray-700 mb-2">Taksit Seçimi *</label>
                   <select
                     value={paymentData.installments}
-                    onChange={(e) => setPaymentData({...paymentData, installments: e.target.value})}
+                    onChange={(e) => {
+                      console.log('🔄 Taksit değiştirildi:', e.target.value);
+                      setPaymentData({...paymentData, installments: e.target.value});
+                    }}
                     className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-purple-500"
                   >
-                    <option value="1">Tek Çekim</option>
-                    <option value="2">2 Taksit</option>
-                    <option value="3">3 Taksit</option>
-                    <option value="6">6 Taksit</option>
-                    <option value="9">9 Taksit</option>
-                    <option value="12">12 Taksit</option>
+                    {generateInstallmentOptions(selectedQuote.maxInstallments || 1).map(option => {
+                      console.log('📝 Option render:', option);
+                      return (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                          {option.value !== '1' && ` (${formatPrice(calculateInstallmentAmount(selectedQuote.price, option.value).toString())} × ${option.value})`}
+                        </option>
+                      );
+                    })}
                   </select>
+                  
+                  {/* Debug Info */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="mt-1 text-xs text-gray-500">
+                      Debug: maxInstallments = {selectedQuote.maxInstallments || 'undefined'}, 
+                      options = {generateInstallmentOptions(selectedQuote.maxInstallments || 1).length}
+                    </div>
+                  )}
+                  
+                  {/* Taksit Detay Gösterimi */}
+                  {paymentData.installments !== '1' && (
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded">
+                      <div className="text-sm text-blue-800">
+                        <p className="font-medium">Taksit Detayı:</p>
+                        <p>
+                          {paymentData.installments} × {formatPrice(calculateInstallmentAmount(selectedQuote.price, paymentData.installments).toString())} = {formatPrice(selectedQuote.price)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Ödeme Özeti */}
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                  <h4 className="font-semibold text-gray-800 mb-2">Ödeme Özeti</h4>
+                  <div className="text-sm space-y-1 text-gray-700">
+                    <div className="flex justify-between">
+                      <span>Sigorta Türü:</span>
+                      <span className="font-medium">{selectedQuote.insuranceType}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Toplam Tutar:</span>
+                      <span className="font-medium">{formatPrice(selectedQuote.price)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Taksit:</span>
+                      <span className="font-medium">
+                        {paymentData.installments === '1' 
+                          ? 'Tek Çekim' 
+                          : `${paymentData.installments} Taksit`
+                        }
+                      </span>
+                    </div>
+                    {paymentData.installments !== '1' && (
+                      <div className="flex justify-between text-green-600">
+                        <span>Aylık Ödeme:</span>
+                        <span className="font-semibold">
+                          {formatPrice(calculateInstallmentAmount(selectedQuote.price, paymentData.installments))}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition"
+                  className="w-full py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:opacity-90 transition flex items-center justify-center"
                 >
-                  Teklifi Satın Al - {formatPrice(selectedQuote.price)}
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                  </svg>
+                  {paymentData.installments === '1' 
+                    ? `Tek Çekim Öde - ${formatPrice(selectedQuote.price)}`
+                    : `${paymentData.installments} Taksit Seç - ${formatPrice(calculateInstallmentAmount(selectedQuote.price, paymentData.installments))}/ay`
+                  }
                 </button>
+
+                {/* Bilgilendirme */}
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                  <div className="flex items-start">
+                    <svg className="w-4 h-4 text-yellow-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <div>
+                      <p className="text-yellow-800 font-medium">Güvenlik Bildirimi</p>
+                      <p className="text-yellow-700 mt-1">
+                        Kart bilgileriniz güvenli şekilde şifrelenir. İşlem onaylandıktan sonra belgeleriniz 30 dakika içinde hazırlanır.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </form>
             </div>
           </div>

@@ -34,7 +34,8 @@ export default function Admin() {
   const [responseData, setResponseData] = useState({
     adminResponse: '',
     price: '',
-    adminNotes: ''
+    adminNotes: '',
+    maxInstallments: 1
   });
   
   // Upload states
@@ -260,58 +261,83 @@ export default function Admin() {
     setShowDetailsModal(true);
   };
 
-  const handleQuoteResponse = (quote: any) => {
-    setSelectedQuote(quote);
-    setResponseData({
-      adminResponse: '',
-      price: '',
-      adminNotes: ''
+ const handleQuoteResponse = (quote: any) => {
+  setSelectedQuote(quote);
+  setResponseData({
+    adminResponse: '',
+    price: '',
+    adminNotes: '',
+    maxInstallments: 1  // ✅ Default değer
+  });
+  setShowResponseModal(true);
+};
+
+ const sendQuoteResponse = async () => {
+  if (!selectedQuote || !responseData.adminResponse.trim()) {
+    toast.error('Lütfen açıklama alanını doldurun!');
+    return;
+  }
+
+  if (!responseData.price || parseFloat(responseData.price) <= 0) {
+    toast.error('Lütfen geçerli bir fiyat giriniz!');
+    return;
+  }
+
+  try {
+    console.log('📤 Admin cevabı gönderiliyor:', {
+      quoteId: selectedQuote.id,
+      price: responseData.price,
+      maxInstallments: responseData.maxInstallments,
+      adminResponse: responseData.adminResponse.substring(0, 50) + '...'
     });
-    setShowResponseModal(true);
-  };
 
-  const sendQuoteResponse = async () => {
-    if (!selectedQuote || !responseData.adminResponse.trim()) {
-      toast.error('Lütfen açıklama alanını doldurun!');
-      return;
+    const updateData: any = {
+      status: 'responded',
+      adminResponse: responseData.adminResponse,
+      responseDate: new Date(),
+      respondedBy: currentUser?.uid,
+      updatedAt: new Date()
+    };
+
+    // Fiyat
+    if (responseData.price) {
+      updateData.price = responseData.price;
     }
 
-    try {
-      const updateData: any = {
-        status: 'responded',
-        adminResponse: responseData.adminResponse,
-        responseDate: new Date(),
-        respondedBy: currentUser?.uid,
-        updatedAt: new Date()
-      };
+    // ✅ maxInstallments - En önemli kısım!
+    const maxInstallments = responseData.maxInstallments || 1;
+    updateData.maxInstallments = maxInstallments;
+    console.log('💾 maxInstallments kaydediliyor:', maxInstallments);
 
-      if (responseData.price) {
-        updateData.price = responseData.price;
-      }
-
-      if (responseData.adminNotes) {
-        updateData.adminNotes = responseData.adminNotes;
-      }
-
-      await updateDoc(doc(db, 'quotes', selectedQuote.id), updateData);
-      
-      if (selectedQuote.userId) {
-        await sendNotificationToUser(selectedQuote.userId, 'quote_response', {
-          quoteId: selectedQuote.id,
-          insuranceType: selectedQuote.insuranceType,
-          price: responseData.price,
-          adminResponse: responseData.adminResponse
-        });
-      }
-      
-      toast.success('Teklif cevabı gönderildi ve kullanıcı bilgilendirildi!');
-      setShowResponseModal(false);
-      setSelectedQuote(null);
-    } catch (error) {
-      console.error('Cevap gönderme hatası:', error);
-      toast.error('Cevap gönderilirken hata oluştu!');
+    // Admin notları
+    if (responseData.adminNotes) {
+      updateData.adminNotes = responseData.adminNotes;
     }
-  };
+
+    console.log('🔍 Final updateData:', updateData);
+
+    await updateDoc(doc(db, 'quotes', selectedQuote.id), updateData);
+    
+    console.log('✅ Firestore güncellendi');
+    
+    if (selectedQuote.userId) {
+      await sendNotificationToUser(selectedQuote.userId, 'quote_response', {
+        quoteId: selectedQuote.id,
+        insuranceType: selectedQuote.insuranceType,
+        price: responseData.price,
+        maxInstallments: maxInstallments,
+        adminResponse: responseData.adminResponse
+      });
+    }
+    
+    toast.success(`Teklif cevabı gönderildi! (${maxInstallments} taksit seçeneği ile)`);
+    setShowResponseModal(false);
+    setSelectedQuote(null);
+  } catch (error) {
+    console.error('❌ Cevap gönderme hatası:', error);
+    toast.error('Cevap gönderilirken hata oluştu!');
+  }
+};
 
   const rejectQuote = async (quote: any) => {
     const reason = prompt('Red nedeni (isteğe bağlı):');
