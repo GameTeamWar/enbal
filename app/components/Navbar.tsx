@@ -9,6 +9,7 @@ import { doc, getDoc, collection, query, where, onSnapshot, orderBy, updateDoc }
 import { db } from '@/lib/firebase';
 import Image from 'next/image';
 
+
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
