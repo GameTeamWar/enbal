@@ -9,31 +9,72 @@ import toast from 'react-hot-toast';
 import PasswordResetModal from '@/app/components/PasswordResetModal';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
+
+  // Telefon numarası formatlaması
+  const formatPhone = (value: string) => {
+    // Sadece rakamları al
+    const numbers = value.replace(/\D/g, '');
+    
+    // 0 ile başlamazsa 0 ekle
+    let formatted = numbers;
+    if (formatted.length > 0 && !formatted.startsWith('0')) {
+      formatted = '0' + formatted;
+    }
+    
+    // Maksimum 11 karakter (05XXXXXXXXX)
+    formatted = formatted.slice(0, 11);
+    
+    // Format: 05XX XXX XX XX
+    if (formatted.length > 4) {
+      formatted = formatted.replace(/(\d{4})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3 $4');
+    } else if (formatted.length > 2) {
+      formatted = formatted.replace(/(\d{4})(\d{1,3})/, '$1 $2');
+    }
+    
+    return formatted;
+  };
+
+  // Telefon numarası validasyonu
+  const validatePhone = (phone: string) => {
+    const cleanPhone = phone.replace(/\s/g, '');
+    const phoneRegex = /^05[0-9]{9}$/;
+    return phoneRegex.test(cleanPhone);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
+    // Telefon numarasını temizle ve kontrol et
+    const cleanPhone = phone.replace(/\s/g, '');
+    if (!validatePhone(phone)) {
+      toast.error('Geçerli bir telefon numarası giriniz! (05XXXXXXXXX)');
+      setLoading(false);
+      return;
+    }
+
+    // Firebase Auth için telefon numarasını email formatına çevir
+    const email = `${cleanPhone}@enbalsigorta.local`;
+
     try {
       await signInWithEmailAndPassword(auth, email, password);
       toast.success('Başarıyla giriş yapıldı!');
-      router.push('/dashboard');
+      router.push('/');
     } catch (error: any) {
       let errorMessage = 'Giriş yapılırken bir hata oluştu!';
       
       if (error.code === 'auth/invalid-credential') {
-        errorMessage = 'Email veya şifre hatalı!';
+        errorMessage = 'Telefon numarası veya şifre hatalı!';
       } else if (error.code === 'auth/user-not-found') {
-        errorMessage = 'Bu email adresi ile kayıtlı kullanıcı bulunamadı!';
+        errorMessage = 'Bu telefon numarası ile kayıtlı kullanıcı bulunamadı!';
       } else if (error.code === 'auth/wrong-password') {
         errorMessage = 'Şifre hatalı!';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Geçersiz email adresi!';
       }
       
       toast.error(errorMessage);
@@ -60,19 +101,20 @@ export default function Login() {
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="rounded-md shadow-sm space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email Adresi
+              <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                Telefon Numarası
               </label>
               <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
+                id="phone"
+                name="phone"
+                type="tel"
+                autoComplete="tel"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={phone}
+                onChange={(e) => setPhone(formatPhone(e.target.value))}
                 className="appearance-none relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent focus:z-10"
-                placeholder="Email adresinizi girin"
+                placeholder="05XX XXX XX XX"
+                maxLength={13}
               />
             </div>
 
@@ -80,17 +122,35 @@ export default function Login() {
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
                 Şifre
               </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent focus:z-10"
-                placeholder="Şifrenizi girin"
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="appearance-none relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent focus:z-10 pr-10"
+                  placeholder="Şifrenizi girin"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700"
+                >
+                  {showPassword ? (
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
