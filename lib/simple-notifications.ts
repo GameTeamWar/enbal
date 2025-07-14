@@ -1,4 +1,4 @@
-// lib/simple-notifications.ts - Düzeltilmiş Browser Notification Sistemi
+// lib/simple-notifications.ts - Çoklu Bildirim Engelleyici Sistem
 
 import { doc, updateDoc, onSnapshot, collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -16,6 +16,9 @@ export class SimpleBrowserNotifications {
   private userId: string | null = null;
   private unsubscribe: (() => void) | null = null;
   private lastNotificationTime: number = 0;
+  // ✅ Çoklu bildirim engelleyici - gösterilen bildirim ID'lerini takip et
+  private shownNotificationIds: Set<string> = new Set();
+  private isInitialLoad: boolean = true;
 
   static getInstance(): SimpleBrowserNotifications {
     if (!SimpleBrowserNotifications.instance) {
@@ -57,23 +60,28 @@ export class SimpleBrowserNotifications {
         throw new Error('Notification permission denied');
       }
 
-      // 2. Real-time dinleme başlat (Basitleştirilmiş query - index gerektirmez)
+      // 2. Önce mevcut bildirimleri temizle
+      this.resetNotificationTracking();
+
+      // 3. Real-time dinleme başlat
       this.startSimpleListener(userId);
 
-      // 3. Kullanıcı bilgilerini güncelle
+      // 4. Kullanıcı bilgilerini güncelle
       await updateDoc(doc(db, 'users', userId), {
         browserNotificationsEnabled: true,
         notificationSetupDate: new Date(),
         lastNotificationCheck: new Date()
       });
 
-      // 4. Test notification göster
-      this.showNotification({
-        title: '🎉 Bildirimler Aktif!',
-        body: 'Teklif güncellemeleriniz hakkında bilgilendirileceksiniz.',
-        icon: '/favicon.ico',
-        tag: 'setup-notification'
-      });
+      // 5. Setup notification göster (sadece ilk kurulumda)
+      setTimeout(() => {
+        this.showNotification({
+          title: '🎉 Bildirimler Aktif!',
+          body: 'Teklif güncellemeleriniz hakkında bilgilendirileceksiniz.',
+          icon: '/favicon.ico',
+          tag: 'setup-notification'
+        });
+      }, 1000);
 
       console.log('✅ Simple notification system aktif edildi');
       return true;
@@ -83,7 +91,15 @@ export class SimpleBrowserNotifications {
     }
   }
 
-  // Basitleştirilmiş Real-time Firestore dinleyici (Index gerektirmez)
+  // Notification tracking'i sıfırla
+  private resetNotificationTracking() {
+    this.shownNotificationIds.clear();
+    this.lastNotificationTime = Date.now(); // Şu anki zamandan başla
+    this.isInitialLoad = true;
+    console.log('🔄 Notification tracking sıfırlandı');
+  }
+
+  // ✅ Düzeltilmiş Real-time Firestore dinleyici - Çoklu bildirim engelleyici
   private startSimpleListener(userId: string) {
     if (this.unsubscribe) {
       this.unsubscribe();
@@ -94,44 +110,125 @@ export class SimpleBrowserNotifications {
       collection(db, 'notifications'),
       where('userId', '==', userId),
       orderBy('createdAt', 'desc'),
-      limit(50) // Son 50 bildirimi takip et
+      limit(10) // Sadece son 10 bildirimi takip et
     );
 
     this.unsubscribe = onSnapshot(q, (snapshot) => {
+      console.log('📨 Notification snapshot alındı:', {
+        size: snapshot.size,
+        isInitialLoad: this.isInitialLoad,
+        lastNotificationTime: new Date(this.lastNotificationTime).toLocaleTimeString()
+      });
+
+      // İlk yükleme ise (sayfa yenilenme vb.) sadece tracking'i başlat, bildirim gösterme
+      if (this.isInitialLoad) {
+        snapshot.docs.forEach(doc => {
+          const notification = doc.data();
+          const notificationTime = notification.createdAt?.toMillis() || 0;
+          
+          // Mevcut bildirimleri tracking'e ekle
+          this.shownNotificationIds.add(doc.id);
+          
+          // En son bildirim zamanını güncelle
+          if (notificationTime > this.lastNotificationTime) {
+            this.lastNotificationTime = notificationTime;
+          }
+        });
+        
+        this.isInitialLoad = false;
+        console.log('🔧 İlk yükleme tamamlandı, tracking başlatıldı');
+        return;
+      }
+
+      // ✅ Sadece GERÇEK yeni bildirimleri işle
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const notification = change.doc.data();
+          const notificationId = change.doc.id;
           const notificationTime = notification.createdAt?.toMillis() || Date.now();
           
-          // Yeni bir bildirim mi kontrol et (son 1 dakika içinde oluşturulmuş)
-          const now = Date.now();
-          const isNew = notificationTime > this.lastNotificationTime && 
-                       (now - notificationTime) < 60000 && // 1 dakika
-                       !notification.read; // Okunmamış
-
-          if (isNew) {
-            this.showNotification({
-              title: notification.title || 'Enbal Sigorta',
-              body: notification.message || 'Yeni bildiriminiz var',
-              icon: '/favicon.ico',
-              tag: `notification-${change.doc.id}`,
-              data: {
-                notificationId: change.doc.id,
-                url: '/my-quotes',
-                type: notification.type
-              }
-            });
-            
-            this.lastNotificationTime = Math.max(this.lastNotificationTime, notificationTime);
+          // ✅ ÇOKLU BİLDİRİM ENGELLEYİCİ KONTROLLER:
+          
+          // 1. Bu bildirim daha önce gösterildi mi?
+          if (this.shownNotificationIds.has(notificationId)) {
+            console.log('⚠️ Bu bildirim zaten gösterildi:', notificationId);
+            return;
           }
+          
+          // 2. Bu bildirim son bildirim zamanından sonra mı oluşturuldu?
+          if (notificationTime <= this.lastNotificationTime) {
+            console.log('⚠️ Bu bildirim eski:', {
+              notificationTime: new Date(notificationTime).toLocaleTimeString(),
+              lastTime: new Date(this.lastNotificationTime).toLocaleTimeString()
+            });
+            // Yine de tracking'e ekle
+            this.shownNotificationIds.add(notificationId);
+            return;
+          }
+          
+          // 3. Bildirim çok eski mi? (5 dakikadan eski bildirimleri gösterme)
+          const now = Date.now();
+          const isOld = (now - notificationTime) > (5 * 60 * 1000); // 5 dakika
+          if (isOld) {
+            console.log('⚠️ Bu bildirim çok eski:', {
+              notificationTime: new Date(notificationTime).toLocaleTimeString(),
+              ageMinutes: Math.round((now - notificationTime) / 60000)
+            });
+            this.shownNotificationIds.add(notificationId);
+            return;
+          }
+          
+          // 4. Bu bildirim okunmuş mu?
+          if (notification.read) {
+            console.log('⚠️ Bu bildirim zaten okunmuş:', notificationId);
+            this.shownNotificationIds.add(notificationId);
+            return;
+          }
+          
+          // 5. Bildirim triggered işareti var mı? (server tarafından tetiklenen)
+          if (!notification.triggered) {
+            console.log('⚠️ Bu bildirim triggered değil:', notificationId);
+            this.shownNotificationIds.add(notificationId);
+            return;
+          }
+
+          // ✅ TÜM KONTROLLER BAŞARILI - BİLDİRİMİ GÖSTER
+          console.log('🎯 YENİ BİLDİRİM GÖSTER:', {
+            id: notificationId,
+            title: notification.title,
+            time: new Date(notificationTime).toLocaleTimeString(),
+            type: notification.type
+          });
+
+          this.showNotification({
+            title: notification.title || 'Enbal Sigorta',
+            body: notification.message || 'Yeni bildiriminiz var',
+            icon: '/favicon.ico',
+            tag: `notification-${notificationId}`, // Her bildirim için unique tag
+            data: {
+              notificationId: notificationId,
+              url: '/my-quotes',
+              type: notification.type
+            }
+          });
+          
+          // ✅ Tracking'i güncelle
+          this.shownNotificationIds.add(notificationId);
+          this.lastNotificationTime = Math.max(this.lastNotificationTime, notificationTime);
+          
+          console.log('✅ Bildirim tracking güncellendi:', {
+            totalShown: this.shownNotificationIds.size,
+            lastTime: new Date(this.lastNotificationTime).toLocaleTimeString()
+          });
         }
       });
     }, (error) => {
-      console.error('Notification listener error:', error);
+      console.error('❌ Notification listener error:', error);
       // Hata durumunda 15 saniye sonra tekrar dene
       setTimeout(() => {
         if (this.userId) {
           console.log('🔄 Notification listener yeniden başlatılıyor...');
+          this.resetNotificationTracking(); // Tracking'i sıfırla
           this.startSimpleListener(this.userId);
         }
       }, 15000);
@@ -148,14 +245,33 @@ export class SimpleBrowserNotifications {
     }
     
     try {
+      // ✅ Aynı tag'li notification varsa önce kapat
+      if (data.tag) {
+        // Eski notification'ı kapat (varsa)
+        const existingNotifications = (window as any).currentNotifications || new Map();
+        if (existingNotifications.has(data.tag)) {
+          const oldNotification = existingNotifications.get(data.tag);
+          oldNotification.close();
+          existingNotifications.delete(data.tag);
+        }
+      }
+
       const notification = new Notification(data.title, {
         body: data.body,
         icon: data.icon || '/favicon.ico',
         badge: '/favicon.ico',
-        tag: data.tag || 'enbal-notification',
+        tag: data.tag || `enbal-notification-${Date.now()}`, // Unique tag garantisi
         requireInteraction: true,
         silent: false
       });
+
+      // ✅ Notification'ı takip et
+      if (!((window as any).currentNotifications)) {
+        (window as any).currentNotifications = new Map();
+      }
+      if (data.tag) {
+        (window as any).currentNotifications.set(data.tag, notification);
+      }
 
       // Notification click event
       notification.onclick = () => {
@@ -168,8 +284,11 @@ export class SimpleBrowserNotifications {
           window.location.href = '/my-quotes';
         }
         
-        // Notification'ı kapat
+        // Notification'ı kapat ve tracking'den çıkar
         notification.close();
+        if (data.tag && (window as any).currentNotifications) {
+          (window as any).currentNotifications.delete(data.tag);
+        }
         
         // Eğer notificationId varsa, okundu olarak işaretle
         if (data.data?.notificationId) {
@@ -177,10 +296,13 @@ export class SimpleBrowserNotifications {
         }
       };
 
-      // 15 saniye sonra otomatik kapat
+      // 20 saniye sonra otomatik kapat
       setTimeout(() => {
         notification.close();
-      }, 15000);
+        if (data.tag && (window as any).currentNotifications) {
+          (window as any).currentNotifications.delete(data.tag);
+        }
+      }, 20000);
 
       console.log('📨 Notification gösterildi:', data.title);
       
@@ -240,7 +362,8 @@ export class SimpleBrowserNotifications {
     try {
       await updateDoc(doc(db, 'notifications', notificationId), {
         read: true,
-        readAt: new Date()
+        readAt: new Date(),
+        shownInBrowser: true // Browser'da gösterildi işareti
       });
       console.log('📖 Notification marked as read:', notificationId);
     } catch (error) {
@@ -250,11 +373,12 @@ export class SimpleBrowserNotifications {
 
   // Test notification
   showTestNotification() {
+    const testId = `test-${Date.now()}`;
     this.showNotification({
       title: '🎉 Test Bildirimi',
       body: 'Browser notification sistemi mükemmel çalışıyor! 🚀',
       icon: '/favicon.ico',
-      tag: 'test-notification',
+      tag: testId,
       data: {
         url: '/my-quotes',
         type: 'test'
@@ -267,19 +391,34 @@ export class SimpleBrowserNotifications {
     permission: NotificationPermission | 'unsupported';
     isSetup: boolean;
     isListening: boolean;
+    shownCount: number;
   } {
     if (typeof window === 'undefined' || !('Notification' in window)) {
       return {
         permission: 'unsupported',
         isSetup: false,
-        isListening: false
+        isListening: false,
+        shownCount: 0
       };
     }
 
     return {
       permission: Notification.permission,
       isSetup: !!this.userId,
-      isListening: !!this.unsubscribe
+      isListening: !!this.unsubscribe,
+      shownCount: this.shownNotificationIds.size
+    };
+  }
+
+  // ✅ Debug bilgileri
+  getDebugInfo() {
+    return {
+      userId: this.userId,
+      isListening: !!this.unsubscribe,
+      shownNotificationIds: Array.from(this.shownNotificationIds),
+      shownCount: this.shownNotificationIds.size,
+      lastNotificationTime: new Date(this.lastNotificationTime).toLocaleString(),
+      isInitialLoad: this.isInitialLoad
     };
   }
 
@@ -298,9 +437,17 @@ export class SimpleBrowserNotifications {
         notificationDisabledDate: new Date()
       });
 
-      // Instance'ı temizle
+      // ✅ Tracking'i temizle
+      this.resetNotificationTracking();
       this.userId = null;
-      this.lastNotificationTime = 0;
+
+      // ✅ Açık notification'ları kapat
+      if ((window as any).currentNotifications) {
+        (window as any).currentNotifications.forEach((notification: Notification) => {
+          notification.close();
+        });
+        (window as any).currentNotifications.clear();
+      }
 
       console.log('❌ Notification system disabled');
     } catch (error) {
@@ -343,6 +490,12 @@ export const disableNotifications = async (userId: string) => {
 export const getNotificationStatus = () => {
   const manager = SimpleBrowserNotifications.getInstance();
   return manager.getStatus();
+};
+
+// ✅ Debug helper
+export const getNotificationDebugInfo = () => {
+  const manager = SimpleBrowserNotifications.getInstance();
+  return manager.getDebugInfo();
 };
 
 // Server-side notification trigger için API endpoint
