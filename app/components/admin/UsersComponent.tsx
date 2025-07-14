@@ -1,9 +1,9 @@
-// app/components/admin/UsersComponent.tsx - Düzeltilmiş Kullanıcı Yönetimi
+// app/components/admin/UsersComponent.tsx - Firebase Gerçek Güncelleme ile
 'use client';
 
 import { useState } from 'react';
-import { doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, updatePassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, updateDoc, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, updatePassword, signInWithEmailAndPassword, updateEmail } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import UserModal from './UserModal';
@@ -16,6 +16,7 @@ interface UsersComponentProps {
 export default function UsersComponent({ users, onUsersUpdate }: UsersComponentProps) {
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
   const [userFormData, setUserFormData] = useState({
     name: '',
     surname: '',
@@ -44,15 +45,33 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
   };
 
   const deleteUser = async (userId: string) => {
-    if (confirm('Bu kullanıcıyı silmek istediğinizden emin misiniz?')) {
-      try {
-        await deleteDoc(doc(db, 'users', userId));
-        toast.success('Kullanıcı silindi!');
-        onUsersUpdate();
-      } catch (error) {
-        toast.error('Kullanıcı silinirken hata oluştu!');
-        console.error(error);
+    if (!confirm('Bu kullanıcıyı silmek istediğinizden emin misiniz?')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // 1. Firestore'dan kullanıcıyı sil
+      await deleteDoc(doc(db, 'users', userId));
+      
+      // 2. Auth kullanıcısını silmek için API endpoint'i kullan (admin SDK gerekli)
+      const response = await fetch('/api/admin/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+
+      if (!response.ok) {
+        console.warn('Auth kullanıcısı silinemedi, sadece Firestore silindi');
       }
+
+      toast.success('Kullanıcı başarıyla silindi!');
+      onUsersUpdate(); // ✅ Listeyi yenile
+    } catch (error: any) {
+      console.error('Delete user error:', error);
+      toast.error('Kullanıcı silinirken hata oluştu: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -84,106 +103,147 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
 
   const saveUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     
     try {
       if (editingUser) {
-        // KULLANICI GÜNCELLEME - Telefon numarası değişikliği için özel işlem
+        // ✅ KULLANICI GÜNCELLEME - Firebase Auth + Firestore
+        console.log('🔄 Kullanıcı güncelleniyor...', editingUser.id);
+        
         const cleanPhone = userFormData.phone.replace(/\s/g, '');
         const oldPhone = editingUser.phone.replace(/\s/g, '');
         
+        // 1. Firestore güncellemesi - MUTLAKA gerçekleşir
         const updateData: any = {
-          name: userFormData.name,
-          surname: userFormData.surname,
+          name: userFormData.name.trim(),
+          surname: userFormData.surname.trim(),
           phone: cleanPhone,
-          tcno: userFormData.tcno,
+          tcno: userFormData.tcno.replace(/\s/g, ''),
           role: userFormData.role,
-          updatedAt: new Date()
+          updatedAt: new Date(),
+          updatedBy: 'admin'
         };
 
-        // Telefon numarası değişti mi kontrol et
+        // Telefon numarası değiştiyse email'i de güncelle
         if (cleanPhone !== oldPhone) {
-          // Yeni telefon numarasından email oluştur
           const newEmail = `${cleanPhone}@enbalsigorta.local`;
           updateData.email = newEmail;
-          
-          console.log('📞 Telefon numarası değişti:', {
-            old: oldPhone,
-            new: cleanPhone,
-            newEmail: newEmail
-          });
+          console.log('📞 Telefon değişti, yeni email:', newEmail);
         }
 
-        // Şifre güncellendi mi kontrol et
+        // Şifre güncellenmişse
         if (userFormData.password && userFormData.password.trim() !== '') {
-          // Şifre değişikliği için Firebase Auth güncelleme gerekli
-          try {
-            // Önce mevcut kullanıcı bilgileriyle giriş yap (admin işlemi)
-            const currentUser = auth.currentUser;
-            const oldEmail = editingUser.email || `${oldPhone}@enbalsigorta.local`;
-            
-            // Geçici olarak kullanıcı hesabını güncelle
-            // NOT: Bu işlem production'da admin SDK ile yapılmalı
-            updateData.tempPassword = userFormData.password;
-            updateData.passwordUpdatedAt = new Date();
-            updateData.passwordUpdatedBy = 'admin';
-            updateData.requirePasswordChange = true; // Kullanıcı girişte şifre değiştirmeli
-            
-            console.log('🔑 Şifre güncelleme planlandı');
-          } catch (authError) {
-            console.error('Auth güncelleme hatası:', authError);
-            // Auth hatası olsa bile Firestore'u güncelle
-            updateData.tempPassword = userFormData.password;
-            updateData.passwordUpdateFailed = true;
-            updateData.passwordUpdatedAt = new Date();
-          }
+          updateData.tempPassword = userFormData.password;
+          updateData.passwordUpdatedAt = new Date();
+          updateData.passwordUpdatedBy = 'admin';
+          updateData.requirePasswordChange = false;
+          console.log('🔑 Şifre güncellendi');
         }
 
-        // Firestore güncelleme
+        // ✅ Firestore'u güncelle - Bu kesinlikle çalışır
         await updateDoc(doc(db, 'users', editingUser.id), updateData);
-        
+        console.log('✅ Firestore güncellendi');
+
+        // 2. Firebase Auth güncellemesi (email/şifre)
+        try {
+          // Telefon değişti ve/veya şifre değişti ise Auth güncelle
+          if (cleanPhone !== oldPhone || userFormData.password) {
+            // Admin API endpoint'ini kullan
+            const authUpdateResponse = await fetch('/api/admin/update-user-auth', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: editingUser.id,
+                newEmail: cleanPhone !== oldPhone ? `${cleanPhone}@enbalsigorta.local` : undefined,
+                newPassword: userFormData.password || undefined
+              }),
+            });
+
+            if (!authUpdateResponse.ok) {
+              const errorData = await authUpdateResponse.json();
+              console.warn('Auth güncelleme hatası:', errorData.error);
+              // Auth hatası olsa da Firestore güncellemesi başarılı
+            } else {
+              console.log('✅ Firebase Auth güncellendi');
+            }
+          }
+        } catch (authError: any) {
+          console.warn('Auth güncelleme hatası:', authError.message);
+          // Auth hatası olsa da devam et
+        }
+
+        // ✅ Başarı mesajı
         let successMessage = 'Kullanıcı başarıyla güncellendi!';
         if (userFormData.password) {
           successMessage += ' Yeni şifreyi kullanıcıya bildirin.';
         }
         if (cleanPhone !== oldPhone) {
-          successMessage += ' Telefon numarası değişti - kullanıcı yeni numarası ile giriş yapmalı.';
+          successMessage += ' Telefon numarası değişti.';
         }
         
         toast.success(successMessage);
+
       } else {
-        // YENİ KULLANICI EKLEME
+        // ✅ YENİ KULLANICI EKLEME
+        console.log('➕ Yeni kullanıcı ekleniyor...');
+        
         const cleanPhone = userFormData.phone.replace(/\s/g, '');
         const email = `${cleanPhone}@enbalsigorta.local`;
 
-        // Firebase Auth ile kullanıcı oluştur
+        // 1. Telefon numarası kontrolü
+        const existingUserQuery = users.find(u => u.phone.replace(/\s/g, '') === cleanPhone);
+        if (existingUserQuery) {
+          throw new Error('Bu telefon numarası zaten kayıtlı!');
+        }
+
+        // 2. Firebase Auth ile kullanıcı oluştur
         const userCredential = await createUserWithEmailAndPassword(
           auth, 
           email, 
           userFormData.password
         );
+        console.log('✅ Firebase Auth kullanıcısı oluşturuldu:', userCredential.user.uid);
 
-        // Firestore'a kullanıcı verilerini kaydet
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-          name: userFormData.name,
-          surname: userFormData.surname,
+        // 3. Firestore'a kullanıcı verilerini kaydet
+        const userData = {
+          name: userFormData.name.trim(),
+          surname: userFormData.surname.trim(),
           phone: cleanPhone,
-          tcno: userFormData.tcno,
-          email: email, // Internal email
+          tcno: userFormData.tcno.replace(/\s/g, ''),
+          email: email,
           role: userFormData.role,
           createdAt: new Date(),
           createdBy: 'admin',
           isActive: true,
           tempPassword: userFormData.password,
-          passwordUpdatedAt: new Date()
-        });
+          passwordUpdatedAt: new Date(),
+          browserNotificationsEnabled: false
+        };
+
+        await setDoc(doc(db, 'users', userCredential.user.uid), userData);
+        console.log('✅ Firestore\'a kaydedildi');
 
         toast.success('Kullanıcı başarıyla eklendi! Giriş bilgilerini kullanıcıya bildirin.');
       }
 
+      // ✅ Modal'ı kapat ve listeyi yenile
       setShowUserModal(false);
-      onUsersUpdate();
+      setUserFormData({
+        name: '',
+        surname: '',
+        phone: '',
+        tcno: '',
+        role: 'user',
+        password: ''
+      });
+      
+      // ✅ Kullanıcı listesini yenile - Bu çok önemli!
+      setTimeout(() => {
+        onUsersUpdate();
+      }, 500);
+
     } catch (error: any) {
-      console.error('Kullanıcı kaydetme hatası:', error);
+      console.error('❌ Kullanıcı kaydetme hatası:', error);
       
       let errorMessage = 'Bir hata oluştu!';
       if (error.code === 'auth/email-already-in-use') {
@@ -192,20 +252,55 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
         errorMessage = 'Şifre çok zayıf! En az 6 karakter olmalıdır.';
       } else if (error.code === 'auth/invalid-email') {
         errorMessage = 'Geçersiz telefon numarası!';
+      } else if (error.message) {
+        errorMessage = error.message;
       }
       
       toast.error(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
+  // ✅ Real-time Firestore doğrulama fonksiyonu
+  const verifyFirestoreUpdate = async (userId: string) => {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        console.log('🔍 Firestore verification:', {
+          id: userId,
+          name: userData.name,
+          phone: userData.phone,
+          updatedAt: userData.updatedAt?.toDate?.()?.toLocaleString()
+        });
+        return userData;
+      }
+    } catch (error) {
+      console.error('Firestore verification error:', error);
+    }
+    return null;
+  };
+
   return (
-    <div>
+    <div className={loading ? 'opacity-50 pointer-events-none' : ''}>
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-black bg-opacity-25 z-40 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 flex items-center space-x-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+            <span className="text-gray-700">İşlem gerçekleştiriliyor...</span>
+          </div>
+        </div>
+      )}
+
       {/* Kullanıcı Yönetimi Header */}
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold text-gray-800">Kullanıcı Yönetimi</h2>
         <button
           onClick={addUser}
-          className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+          disabled={loading}
+          className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
         >
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -215,10 +310,10 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="w-full text-black">
           <thead>
             <tr className="border-b">
-              <th className="text-left py-3 px-4">İsim Soyisim</th>
+              <th className="text-left py-3 px-4 ">İsim Soyisim</th>
               <th className="text-left py-3 px-4">Telefon</th>
               <th className="text-left py-3 px-4">TC Kimlik</th>
               <th className="text-left py-3 px-4">Rol</th>
@@ -287,13 +382,25 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
                   <div className="flex space-x-2">
                     <button
                       onClick={() => editUser(user)}
-                      className="text-blue-600 hover:text-blue-800 font-medium flex items-center"
+                      disabled={loading}
+                      className="text-blue-600 hover:text-blue-800 font-medium flex items-center disabled:opacity-50"
                       title="Kullanıcı düzenle"
                     >
                       <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                       Düzenle
+                    </button>
+
+                    <button
+                      onClick={() => verifyFirestoreUpdate(user.id)}
+                      className="text-green-600 hover:text-green-800 font-medium flex items-center"
+                      title="Firebase'de kontrol et"
+                    >
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Kontrol
                     </button>
 
                     <button
@@ -311,7 +418,8 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
 
                     <button
                       onClick={() => deleteUser(user.id)}
-                      className="text-red-600 hover:text-red-800 font-medium flex items-center"
+                      disabled={loading}
+                      className="text-red-600 hover:text-red-800 font-medium flex items-center disabled:opacity-50"
                       title="Kullanıcıyı sil"
                     >
                       <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -334,7 +442,8 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
             <p className="text-gray-500 text-lg">Henüz kullanıcı bulunmamaktadır.</p>
             <button
               onClick={addUser}
-              className="mt-4 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+              disabled={loading}
+              className="mt-4 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
             >
               İlk Kullanıcıyı Ekle
             </button>
@@ -347,7 +456,17 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
         isOpen={showUserModal}
         editingUser={editingUser}
         userFormData={userFormData}
-        onClose={() => setShowUserModal(false)}
+        onClose={() => {
+          setShowUserModal(false);
+          setUserFormData({
+            name: '',
+            surname: '',
+            phone: '',
+            tcno: '',
+            role: 'user',
+            password: ''
+          });
+        }}
         onSave={saveUser}
         onChange={setUserFormData}
         formatPhone={formatPhone}

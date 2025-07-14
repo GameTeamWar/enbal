@@ -1,3 +1,4 @@
+// app/admin/page.tsx - Düzeltilmiş Real-time Updates
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -16,7 +17,7 @@ export default function Admin() {
   // Auth Guard - Sadece admin rolündeki kullanıcılar erişebilir
   const { user: currentUser, loading: authLoading, isAdmin } = useAdminGuard();
 
-  // ✅ TÜM STATE'LERİ ÖNCE TANIMLA - koşullu rendering'den önce
+  // ✅ TÜM STATE'LERİ ÖNCE TANIMLA
   const [activeTab, setActiveTab] = useState('quotes');
   const [quotes, setQuotes] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -40,53 +41,61 @@ export default function Admin() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // ✅ TÜM EFFECT'LERİ DE ÖNCE TANIMLA
-  // Fetch quotes
+  // ✅ Real-time Firestore Listeners - Düzeltilmiş
   useEffect(() => {
     if (!currentUser || !isAdmin) return;
 
-    const q = query(collection(db, 'quotes'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    console.log('🔄 Setting up real-time listeners...');
+
+    // 1. Quotes listener
+    const quotesQuery = query(collection(db, 'quotes'), orderBy('createdAt', 'desc'));
+    const unsubscribeQuotes = onSnapshot(quotesQuery, (snapshot) => {
       const quotesData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+      console.log('📋 Quotes updated:', quotesData.length);
       setQuotes(quotesData);
+    }, (error) => {
+      console.error('❌ Quotes listener error:', error);
+      toast.error('Teklifler yüklenirken hata oluştu!');
     });
 
-    return () => unsubscribe();
-  }, [currentUser, isAdmin]);
-
-  // Fetch password reset requests
-  useEffect(() => {
-    if (!currentUser || !isAdmin) return;
-
-    const q = query(collection(db, 'passwordResetRequests'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const requestsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setPasswordResetRequests(requestsData);
-    });
-
-    return () => unsubscribe();
-  }, [currentUser, isAdmin]);
-
-  // Fetch users
-  useEffect(() => {
-    if (!currentUser || !isAdmin) return;
-
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    // 2. Users listener - EN ÖNEMLİSİ!
+    const usersQuery = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
       const usersData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+      console.log('👥 Users updated:', usersData.length);
       setUsers(usersData);
+    }, (error) => {
+      console.error('❌ Users listener error:', error);
+      toast.error('Kullanıcılar yüklenirken hata oluştu!');
     });
 
-    return () => unsubscribe();
+    // 3. Password reset requests listener
+    const passwordQuery = query(collection(db, 'passwordResetRequests'), orderBy('createdAt', 'desc'));
+    const unsubscribePasswordResets = onSnapshot(passwordQuery, (snapshot) => {
+      const requestsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      console.log('🔐 Password resets updated:', requestsData.length);
+      setPasswordResetRequests(requestsData);
+    }, (error) => {
+      console.error('❌ Password resets listener error:', error);
+      toast.error('Şifre talepleri yüklenirken hata oluştu!');
+    });
+
+    // Cleanup function
+    return () => {
+      console.log('🧹 Cleaning up listeners...');
+      unsubscribeQuotes();
+      unsubscribeUsers();
+      unsubscribePasswordResets();
+    };
   }, [currentUser, isAdmin]);
 
   // Audio notification setup
@@ -98,7 +107,6 @@ export default function Admin() {
   }, [quotes.length, audioEnabled]);
 
   // ✅ KOŞULLU RENDERING'İ EN SONDA YAP
-  // Auth loading screen
   if (authLoading) {
     return (
       <>
@@ -113,7 +121,6 @@ export default function Admin() {
     );
   }
 
-  // Auth failed - Bu sayfa render edilmeyecek çünkü useAdminGuard otomatik yönlendirme yapacak
   if (!isAdmin || !currentUser) {
     return (
       <>
@@ -153,7 +160,6 @@ export default function Admin() {
     try {
       console.log('📨 Kullanıcıya bildirim gönderiliyor:', { userId, type, data });
 
-      // Bildirim verisini hazırla
       let notificationTitle = '';
       let notificationMessage = '';
 
@@ -175,7 +181,6 @@ export default function Admin() {
           notificationMessage = `Teklifiniz hakkında güncelleme var.`;
       }
 
-      // Firestore'a bildirim ekle - otomatik tetikleme için
       await addDoc(collection(db, 'notifications'), {
         userId: userId,
         type: type,
@@ -187,13 +192,13 @@ export default function Admin() {
         reason: data.reason || null,
         documentUrl: data.documentUrl || null,
         read: false,
-        triggered: true, // ✅ Bu flag ile browser notification tetiklenir
-        shownInBrowser: false, // ✅ Henüz browser'da gösterilmedi
+        triggered: true,
+        shownInBrowser: false,
         createdAt: serverTimestamp(),
         createdBy: currentUser?.uid || 'admin'
       });
 
-      console.log('✅ Bildirim Firestore\'a eklendi - otomatik olarak kullanıcıya iletilecek');
+      console.log('✅ Bildirim Firestore\'a eklendi');
       return true;
     } catch (error) {
       console.error('❌ Kullanıcı bildirimi hatası:', error);
@@ -288,10 +293,8 @@ export default function Admin() {
         updateData.adminNotes = responseData.adminNotes;
       }
 
-      // Firestore'u güncelle
       await updateDoc(doc(db, 'quotes', selectedQuote.id), updateData);
       
-      // ✅ Kullanıcıya bildirim gönder
       if (selectedQuote.userId) {
         await sendNotificationToUser(selectedQuote.userId, 'quote_response', {
           quoteId: selectedQuote.id,
@@ -324,7 +327,6 @@ export default function Admin() {
 
       await updateDoc(doc(db, 'quotes', quote.id), updateData);
       
-      // ✅ Kullanıcıya bildirim gönder
       if (quote.userId) {
         await sendNotificationToUser(quote.userId, 'quote_rejected', {
           quoteId: quote.id,
@@ -389,7 +391,6 @@ export default function Admin() {
             updatedAt: new Date()
           });
 
-          // ✅ Kullanıcıya belge hazır bildirimi gönder
           if (selectedQuote.userId) {
             await sendNotificationToUser(selectedQuote.userId, 'document_ready', {
               quoteId: selectedQuote.id,
@@ -412,8 +413,10 @@ export default function Admin() {
     );
   };
 
+  // ✅ Users refresh function - Real-time listener sayesinde otomatik
   const refreshUsers = () => {
-    toast.success('Kullanıcı listesi güncellendi!');
+    console.log('🔄 Users refresh triggered (real-time listener handles this automatically)');
+    toast.success('Kullanıcı listesi real-time güncellendi!');
   };
 
   // Password reset functions
@@ -445,7 +448,7 @@ export default function Admin() {
     }
   };
 
-  // ✅ NORMAL JSX RENDER
+  // ✅ JSX RENDER
   return (
     <>
       <Navbar />
@@ -524,9 +527,12 @@ export default function Admin() {
                 </button>
                 <button
                   onClick={() => setActiveTab('users')}
-                  className={`pb-4 px-4 ${activeTab === 'users' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-600'}`}
+                  className={`pb-4 px-4 relative ${activeTab === 'users' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-600'}`}
                 >
                   Kullanıcılar
+                  <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {users.length}
+                  </span>
                 </button>
               </div>
             </div>
