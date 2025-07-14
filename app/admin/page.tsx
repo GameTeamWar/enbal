@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { auth, db, storage } from '@/lib/firebase';
 import { useAdminGuard } from '@/hooks/useAuthGuard';
 import toast from 'react-hot-toast';
@@ -17,7 +16,7 @@ export default function Admin() {
   // Auth Guard - Sadece admin rolündeki kullanıcılar erişebilir
   const { user: currentUser, loading: authLoading, isAdmin } = useAdminGuard();
 
-  // States
+  // ✅ TÜM STATE'LERİ ÖNCE TANIMLA - koşullu rendering'den önce
   const [activeTab, setActiveTab] = useState('quotes');
   const [quotes, setQuotes] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -41,6 +40,64 @@ export default function Admin() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  // ✅ TÜM EFFECT'LERİ DE ÖNCE TANIMLA
+  // Fetch quotes
+  useEffect(() => {
+    if (!currentUser || !isAdmin) return;
+
+    const q = query(collection(db, 'quotes'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const quotesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setQuotes(quotesData);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, isAdmin]);
+
+  // Fetch password reset requests
+  useEffect(() => {
+    if (!currentUser || !isAdmin) return;
+
+    const q = query(collection(db, 'passwordResetRequests'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const requestsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setPasswordResetRequests(requestsData);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, isAdmin]);
+
+  // Fetch users
+  useEffect(() => {
+    if (!currentUser || !isAdmin) return;
+
+    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const usersData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setUsers(usersData);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, isAdmin]);
+
+  // Audio notification setup
+  useEffect(() => {
+    if (audioEnabled && quotes.length > 0) {
+      const audio = new Audio('/notification.mp3');
+      audio.play().catch(() => console.log('Audio play failed'));
+    }
+  }, [quotes.length, audioEnabled]);
+
+  // ✅ KOŞULLU RENDERING'İ EN SONDA YAP
   // Auth loading screen
   if (authLoading) {
     return (
@@ -72,63 +129,7 @@ export default function Admin() {
     );
   }
 
-  // Fetch quotes
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const q = query(collection(db, 'quotes'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const quotesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setQuotes(quotesData);
-    });
-
-    return () => unsubscribe();
-  }, [currentUser]);
-
-  // Fetch password reset requests
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const q = query(collection(db, 'passwordResetRequests'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const requestsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setPasswordResetRequests(requestsData);
-    });
-
-    return () => unsubscribe();
-  }, [currentUser]);
-
-  // Fetch users
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setUsers(usersData);
-    });
-
-    return () => unsubscribe();
-  }, [currentUser]);
-
-  // Audio notification setup
-  useEffect(() => {
-    if (audioEnabled && quotes.length > 0) {
-      const audio = new Audio('/notification.mp3');
-      audio.play().catch(() => console.log('Audio play failed'));
-    }
-  }, [quotes.length, audioEnabled]);
-
-  // Computed values
+  // ✅ COMPUTED VALUES VE HELPER FUNCTIONS
   const newQuotesCount = quotes.filter(quote => quote.status === 'pending').length;
   const paidQuotesCount = quotes.filter(quote => 
     quote.customerStatus === 'card_submitted' && 
@@ -144,6 +145,59 @@ export default function Admin() {
       toast.success(`${label} kopyalandı!`);
     } catch (err) {
       toast.error('Kopyalama işlemi başarısız!');
+    }
+  };
+
+  // ✅ Kullanıcıya bildirim gönder fonksiyonu
+  const sendNotificationToUser = async (userId: string, type: string, data: any) => {
+    try {
+      console.log('📨 Kullanıcıya bildirim gönderiliyor:', { userId, type, data });
+
+      // Bildirim verisini hazırla
+      let notificationTitle = '';
+      let notificationMessage = '';
+
+      switch (type) {
+        case 'quote_response':
+          notificationTitle = 'Teklif Cevabı Geldi! 🎉';
+          notificationMessage = `${data.insuranceType} sigortası teklifiniz cevaplandı.${data.price ? ` Fiyat: ${data.price} TL` : ''}`;
+          break;
+        case 'quote_rejected':
+          notificationTitle = 'Teklif Reddedildi ❌';
+          notificationMessage = `${data.insuranceType} sigortası teklifiniz reddedildi.${data.reason ? ` Sebep: ${data.reason}` : ''}`;
+          break;
+        case 'document_ready':
+          notificationTitle = 'Belgeleriniz Hazır! 📄';
+          notificationMessage = `${data.insuranceType} sigortası belgeleriniz hazırlandı. İndirebilirsiniz.`;
+          break;
+        default:
+          notificationTitle = 'Teklif Güncellendi';
+          notificationMessage = `Teklifiniz hakkında güncelleme var.`;
+      }
+
+      // Firestore'a bildirim ekle - otomatik tetikleme için
+      await addDoc(collection(db, 'notifications'), {
+        userId: userId,
+        type: type,
+        quoteId: data.quoteId || null,
+        insuranceType: data.insuranceType || null,
+        title: notificationTitle,
+        message: notificationMessage,
+        price: data.price || null,
+        reason: data.reason || null,
+        documentUrl: data.documentUrl || null,
+        read: false,
+        triggered: true, // ✅ Bu flag ile browser notification tetiklenir
+        shownInBrowser: false, // ✅ Henüz browser'da gösterilmedi
+        createdAt: serverTimestamp(),
+        createdBy: currentUser?.uid || 'admin'
+      });
+
+      console.log('✅ Bildirim Firestore\'a eklendi - otomatik olarak kullanıcıya iletilecek');
+      return true;
+    } catch (error) {
+      console.error('❌ Kullanıcı bildirimi hatası:', error);
+      return false;
     }
   };
 
@@ -234,9 +288,20 @@ export default function Admin() {
         updateData.adminNotes = responseData.adminNotes;
       }
 
+      // Firestore'u güncelle
       await updateDoc(doc(db, 'quotes', selectedQuote.id), updateData);
       
-      toast.success('Teklif cevabı gönderildi!');
+      // ✅ Kullanıcıya bildirim gönder
+      if (selectedQuote.userId) {
+        await sendNotificationToUser(selectedQuote.userId, 'quote_response', {
+          quoteId: selectedQuote.id,
+          insuranceType: selectedQuote.insuranceType,
+          price: responseData.price,
+          adminResponse: responseData.adminResponse
+        });
+      }
+      
+      toast.success('Teklif cevabı gönderildi ve kullanıcı bilgilendirildi!');
       setShowResponseModal(false);
       setSelectedQuote(null);
     } catch (error) {
@@ -258,7 +323,17 @@ export default function Admin() {
       };
 
       await updateDoc(doc(db, 'quotes', quote.id), updateData);
-      toast.success('Teklif reddedildi!');
+      
+      // ✅ Kullanıcıya bildirim gönder
+      if (quote.userId) {
+        await sendNotificationToUser(quote.userId, 'quote_rejected', {
+          quoteId: quote.id,
+          insuranceType: quote.insuranceType,
+          reason: reason || 'Danışman tarafından reddedildi'
+        });
+      }
+      
+      toast.success('Teklif reddedildi ve kullanıcı bilgilendirildi!');
     } catch (error) {
       console.error('Reddetme hatası:', error);
       toast.error('Teklif reddedilirken hata oluştu!');
@@ -314,7 +389,17 @@ export default function Admin() {
             updatedAt: new Date()
           });
 
-          toast.success('Belge başarıyla yüklendi!');
+          // ✅ Kullanıcıya belge hazır bildirimi gönder
+          if (selectedQuote.userId) {
+            await sendNotificationToUser(selectedQuote.userId, 'document_ready', {
+              quoteId: selectedQuote.id,
+              insuranceType: selectedQuote.insuranceType,
+              documentUrl: downloadURL,
+              documentName: uploadFile.name
+            });
+          }
+
+          toast.success('Belge başarıyla yüklendi ve kullanıcı bilgilendirildi!');
           setShowUploadModal(false);
           setUploadFile(null);
           setSelectedQuote(null);
@@ -360,6 +445,7 @@ export default function Admin() {
     }
   };
 
+  // ✅ NORMAL JSX RENDER
   return (
     <>
       <Navbar />

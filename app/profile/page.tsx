@@ -179,6 +179,22 @@ export default function Profile() {
     );
   }
 
+  if (!user) {
+    return (
+      <>
+        <Navbar />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center pt-24">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">🚫</div>
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">Yetkisiz Erişim</h1>
+            <p className="text-gray-600 mb-4">Bu sayfaya erişim yetkiniz bulunmamaktadır.</p>
+            <p className="text-gray-500">Lütfen giriş yapın.</p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <Navbar />

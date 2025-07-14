@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, query, collection, where, getDocs } from 'firebase/firestore';
+import { setDoc, doc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import toast from 'react-hot-toast';
+import Link from 'next/link';
 
 export default function Register() {
   const router = useRouter();
@@ -442,14 +442,17 @@ export default function Register() {
           {step === 2 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-700">Detay Bilgiler</h3>
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="text-purple-600 hover:text-purple-700"
+                  className="text-purple-600 hover:text-purple-700 flex items-center"
                 >
-                  ← Geri
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Geri
                 </button>
+                <h3 className="text-lg font-semibold text-gray-700">Detay Bilgiler</h3>
               </div>
               
               <div>
@@ -564,7 +567,7 @@ export default function Register() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center"
+                className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50"
               >
                 {loading ? (
                   <>
@@ -583,16 +586,12 @@ export default function Register() {
         </form>
 
         <div className="mt-6 text-center">
-          <span className="text-gray-600">Zaten hesabınız var mı?</span>
-          <Link href="/login" className="text-purple-600 hover:text-purple-700 ml-2">
-            Giriş Yap
-          </Link>
-        </div>
-
-        <div className="mt-4 text-center">
-          <Link href="/" className="text-gray-600 hover:text-gray-700 text-sm">
-            ← Ana Sayfaya Dön
-          </Link>
+          <p className="text-gray-600">
+            Zaten hesabınız var mı?{' '}
+            <Link href="/login" className="text-purple-600 hover:text-purple-700 font-medium">
+              Giriş yapın
+            </Link>
+          </p>
         </div>
       </div>
     </div>

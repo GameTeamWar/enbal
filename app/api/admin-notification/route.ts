@@ -31,6 +31,9 @@ export async function POST(request: Request) {
         customerPhone
       });
 
+      // Burada web push notification da gönderebilirsiniz
+      // await sendPushNotification(data);
+
       return NextResponse.json({ 
         success: true, 
         message: 'Bildirimler gönderildi' 

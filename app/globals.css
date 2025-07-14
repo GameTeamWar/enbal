@@ -94,3 +94,20 @@ input:-moz-autofill:focus {
   color: #000000 !important;
   background-color: #ffffff !important;
 }
+
+/* Toast bildirimleri için navbar altında konumlandırma */
+.react-hot-toast-container {
+  top: 150px !important; /* Navbar yüksekliği + margin */
+}
+
+/* Toast bildirimlerinin z-index'ini navbar'dan düşük tut */
+.react-hot-toast {
+  z-index: 40 !important; /* Navbar z-index 50, bu 40 */
+}
+
+/* Mobil cihazlarda daha az margin */
+@media (max-width: 768px) {
+  .react-hot-toast-container {
+    top: 70px !important;
+  }
+}

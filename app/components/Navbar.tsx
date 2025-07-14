@@ -9,7 +9,6 @@ import { doc, getDoc, collection, query, where, onSnapshot, orderBy, updateDoc }
 import { db } from '@/lib/firebase';
 import Image from 'next/image';
 
-
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -24,6 +23,7 @@ export default function Navbar() {
     uid: '',
     role: ''
   });
+
   type Notification = {
     id: string;
     read?: boolean;
@@ -32,6 +32,7 @@ export default function Navbar() {
     message?: string;
     title?: string;
     createdAt?: any;
+    triggered?: boolean;
     [key: string]: any;
   };
 
@@ -58,6 +59,7 @@ export default function Navbar() {
               role: userData.role || 'user'
             });
             
+            // Bildirim listener'ını başlat
             setupNotificationsListener(authUser.uid);
           }
         } catch (error) {
@@ -81,30 +83,130 @@ export default function Navbar() {
   }, []);
 
   const setupNotificationsListener = (userId: string) => {
-    const q = query(
-      collection(db, 'notifications'), 
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
-    
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const notificationsData: Notification[] = [];
-      let unreadCounter = 0;
+    try {
+      console.log('🎧 Notification listener kuruluyor...', userId);
       
-      querySnapshot.forEach((doc) => {
-        const notification: Notification = { id: doc.id, ...doc.data() };
-        notificationsData.push(notification);
+      // Basit query - sadece userId ile filtreleme (index gerektirmez)
+      const q = query(
+        collection(db, 'notifications'), 
+        where('userId', '==', userId)
+      );
+      
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        console.log('📨 Notification snapshot alındı:', querySnapshot.size, 'bildirim');
         
-        if (!notification.read) {
-          unreadCounter++;
-        }
+        const notificationsData: Notification[] = [];
+        let unreadCounter = 0;
+        
+        querySnapshot.forEach((doc) => {
+          const notification: Notification = { id: doc.id, ...doc.data() };
+          notificationsData.push(notification);
+          
+          if (!notification.read) {
+            unreadCounter++;
+          }
+          
+          // Browser notification göster - triggered kontrolü ile
+          if (!notification.read && notification.triggered && !notification.shownInBrowser) {
+            showBrowserNotification(notification);
+            // Bir kez gösterildi olarak işaretle
+            updateDoc(doc.ref, { shownInBrowser: true }).catch(console.error);
+          }
+        });
+        
+        // Tarihe göre sırala (client-side)
+        notificationsData.sort((a, b) => {
+          const timeA = a.createdAt?.toMillis?.() || 0;
+          const timeB = b.createdAt?.toMillis?.() || 0;
+          return timeB - timeA;
+        });
+        
+        setNotifications(notificationsData.slice(0, 10)); // Son 10 bildirimi göster
+        setUnreadCount(unreadCounter);
+        
+        console.log('📊 Bildirim durumu:', {
+          total: notificationsData.length,
+          unread: unreadCounter
+        });
+      }, (error) => {
+        console.error('❌ Notification listener hatası:', error);
+        
+        // Hata durumunda 10 saniye sonra tekrar dene
+        setTimeout(() => {
+          console.log('🔄 Notification listener yeniden başlatılıyor...');
+          setupNotificationsListener(userId);
+        }, 10000);
       });
-      
-      setNotifications(notificationsData.slice(0, 10));
-      setUnreadCount(unreadCounter);
-    });
 
-    return unsubscribe;
+      return unsubscribe;
+    } catch (error) {
+      console.error('❌ Notification listener setup hatası:', error);
+    }
+  };
+
+  const showBrowserNotification = (notification: Notification) => {
+    // Browser notification göster
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        const browserNotif = new Notification(notification.title || 'Enbal Sigorta', {
+          body: notification.message || 'Yeni bildiriminiz var',
+          icon: '/favicon.ico',
+          badge: '/favicon.ico',
+          tag: `notification-${notification.id}`,
+          requireInteraction: true
+        });
+
+        browserNotif.onclick = () => {
+          window.focus();
+          markNotificationAsRead(notification.id);
+          router.push('/my-quotes');
+          browserNotif.close();
+        };
+
+        // 10 saniye sonra otomatik kapat
+        setTimeout(() => {
+          browserNotif.close();
+        }, 10000);
+
+        console.log('🔔 Browser notification gösterildi:', notification.title);
+      } catch (error) {
+        console.error('Browser notification error:', error);
+      }
+    }
+  };
+
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      await updateDoc(doc(db, 'notifications', notificationId), {
+        read: true,
+        readAt: new Date()
+      });
+      console.log('📖 Bildirim okundu olarak işaretlendi:', notificationId);
+    } catch (error) {
+      console.error('Bildirim okundu olarak işaretlenemedi:', error);
+    }
+  };
+
+  const formatNotificationTime = (timestamp: any) => {
+    if (!timestamp) return '';
+    
+    try {
+      const date = timestamp.toDate();
+      const now = new Date();
+      const diff = now.getTime() - date.getTime();
+      
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      
+      if (minutes < 1) return 'Az önce';
+      if (minutes < 60) return `${minutes} dk önce`;
+      if (hours < 24) return `${hours} sa önce`;
+      return `${days} gün önce`;
+    } catch (error) {
+      console.error('Time formatting error:', error);
+      return '';
+    }
   };
 
   const handleLogout = async () => {
@@ -116,33 +218,6 @@ export default function Navbar() {
     } catch (error) {
       console.error("Error signing out:", error);
     }
-  };
-
-  const markNotificationAsRead = async (notificationId: string) => {
-    try {
-      await updateDoc(doc(db, 'notifications', notificationId), {
-        read: true
-      });
-    } catch (error) {
-      console.error('Bildirim okundu olarak işaretlenemedi:', error);
-    }
-  };
-
-  const formatNotificationTime = (timestamp: any) => {
-    if (!timestamp) return '';
-    
-    const date = timestamp.toDate();
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    
-    if (minutes < 1) return 'Az önce';
-    if (minutes < 60) return `${minutes} dk önce`;
-    if (hours < 24) return `${hours} sa önce`;
-    return `${days} gün önce`;
   };
 
   const handleNavClick = (section: string) => {
@@ -177,7 +252,6 @@ export default function Navbar() {
               Anasayfa
             </Link>
             
-            {/* Sadece ana sayfada değilse bu linkler görünür */}
             {isHomePage ? (
               <>
                 <button
@@ -231,7 +305,7 @@ export default function Navbar() {
               </button>
             ) : (
               <div className="flex items-center space-x-4">
-                {/* Bildirimler */}
+                {/* Bildirimler - Geliştirilmiş */}
                 <div className="relative">
                   <button
                     onClick={() => setNotificationsOpen(!notificationsOpen)}
@@ -241,7 +315,7 @@ export default function Navbar() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-3.405-3.405A2.032 2.032 0 0118 12V9a6.002 6.002 0 00-4-5.659V3a2 2 0 10-4 0v.341C7.67 4.165 6 6.388 6 9v3c0 .601-.216 1.182-.595 1.595L2 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                     </svg>
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center animate-pulse">
                         {unreadCount > 9 ? '9+' : unreadCount}
                       </span>
                     )}
@@ -251,27 +325,49 @@ export default function Navbar() {
                     <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border z-10">
                       <div className="p-4 border-b">
                         <div className="flex justify-between items-center">
-                          <h3 className="font-semibold text-gray-800">Bildirimler</h3>
-                          <Link 
-                            href="/my-quotes"
-                            className="text-purple-600 hover:text-purple-700 text-sm"
-                            onClick={() => setNotificationsOpen(false)}
-                          >
-                            Tümünü Gör
-                          </Link>
+                          <h3 className="font-semibold text-gray-800">
+                            Bildirimler {unreadCount > 0 && (
+                              <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full ml-2">
+                                {unreadCount} yeni
+                              </span>
+                            )}
+                          </h3>
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => {
+                                // Tüm bildirimleri okundu olarak işaretle
+                                notifications.filter(n => !n.read).forEach(n => {
+                                  markNotificationAsRead(n.id);
+                                });
+                              }}
+                              className="text-xs text-blue-600 hover:text-blue-700"
+                            >
+                              Tümünü Oku
+                            </button>
+                            <Link 
+                              href="/my-quotes"
+                              className="text-purple-600 hover:text-purple-700 text-sm"
+                              onClick={() => setNotificationsOpen(false)}
+                            >
+                              Tümünü Gör
+                            </Link>
+                          </div>
                         </div>
                       </div>
                       
                       <div className="max-h-64 overflow-y-auto">
                         {notifications.length === 0 ? (
                           <div className="p-4 text-center text-gray-500">
+                            <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 009.586 13H7" />
+                            </svg>
                             Henüz bildiriminiz yok
                           </div>
                         ) : (
                           notifications.slice(0, 5).map((notification) => (
                             <div
                               key={notification.id}
-                              className={`p-4 border-b hover:bg-gray-50 cursor-pointer ${!notification.read ? 'bg-blue-50' : ''}`}
+                              className={`p-4 border-b hover:bg-gray-50 cursor-pointer transition ${!notification.read ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
                               onClick={() => {
                                 markNotificationAsRead(notification.id);
                                 setNotificationsOpen(false);
@@ -279,17 +375,29 @@ export default function Navbar() {
                               }}
                             >
                               <div className="flex items-start space-x-3">
-                                <div className={`w-2 h-2 rounded-full mt-2 ${!notification.read ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
-                                <div className="flex-1">
-                                  <p className="text-sm font-medium text-gray-800">
+                                <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${!notification.read ? 'bg-blue-500 animate-pulse' : 'bg-gray-300'}`}></div>
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-medium text-gray-800 truncate ${!notification.read ? 'font-semibold' : ''}`}>
                                     {notification.title || 'Bildirim'}
                                   </p>
-                                  <p className="text-xs text-gray-600 mt-1">
+                                  <p className="text-xs text-gray-600 mt-1 line-clamp-2">
                                     {notification.message}
                                   </p>
-                                  <p className="text-xs text-gray-400 mt-1">
-                                    {formatNotificationTime(notification.createdAt)}
-                                  </p>
+                                  <div className="flex items-center mt-2">
+                                    <p className="text-xs text-gray-400">
+                                      {formatNotificationTime(notification.createdAt)}
+                                    </p>
+                                    {notification.type && (
+                                      <span className={`text-xs px-2 py-1 rounded-full ml-2 ${
+                                        notification.type === 'quote_response' ? 'bg-green-100 text-green-800' :
+                                        notification.type === 'quote_rejected' ? 'bg-red-100 text-red-800' :
+                                        notification.type === 'document_ready' ? 'bg-blue-100 text-blue-800' :
+                                        'bg-gray-100 text-gray-800'
+                                      }`}>
+                                        {notification.insuranceType || notification.type}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -352,6 +460,11 @@ export default function Navbar() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         Tekliflerim
+                        {unreadCount > 0 && (
+                          <span className="ml-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                            {unreadCount}
+                          </span>
+                        )}
                       </Link>
                       
                       {user.role === 'admin' && (
