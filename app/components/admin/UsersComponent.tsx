@@ -1,8 +1,9 @@
+// app/components/admin/UsersComponent.tsx - Düzeltilmiş Kullanıcı Yönetimi
 'use client';
 
 import { useState } from 'react';
 import { doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updatePassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import UserModal from './UserModal';
@@ -20,7 +21,6 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
     surname: '',
     phone: '',
     tcno: '',
-    email: '',
     role: 'user',
     password: ''
   });
@@ -63,7 +63,6 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
       surname: '',
       phone: '',
       tcno: '',
-      email: '',
       role: 'user',
       password: ''
     });
@@ -77,7 +76,6 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
       surname: user.surname || '',
       phone: user.phone || '',
       tcno: user.tcno || '',
-      email: user.email || '',
       role: user.role || 'user',
       password: '' // Şifre düzenleme için boş bırak
     });
@@ -89,53 +87,97 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
     
     try {
       if (editingUser) {
-        // Kullanıcı güncelleme
+        // KULLANICI GÜNCELLEME - Telefon numarası değişikliği için özel işlem
+        const cleanPhone = userFormData.phone.replace(/\s/g, '');
+        const oldPhone = editingUser.phone.replace(/\s/g, '');
+        
         const updateData: any = {
           name: userFormData.name,
           surname: userFormData.surname,
-          phone: userFormData.phone,
+          phone: cleanPhone,
           tcno: userFormData.tcno,
-          email: userFormData.email,
           role: userFormData.role,
           updatedAt: new Date()
         };
 
-        // Eğer şifre güncellenmişse
-        if (userFormData.password) {
-          updateData.tempPassword = userFormData.password; // Geçici şifre kaydet
-          updateData.passwordUpdatedAt = new Date();
-          updateData.passwordUpdatedBy = 'admin'; // Kimden güncellendi
+        // Telefon numarası değişti mi kontrol et
+        if (cleanPhone !== oldPhone) {
+          // Yeni telefon numarasından email oluştur
+          const newEmail = `${cleanPhone}@enbalsigorta.local`;
+          updateData.email = newEmail;
+          
+          console.log('📞 Telefon numarası değişti:', {
+            old: oldPhone,
+            new: cleanPhone,
+            newEmail: newEmail
+          });
         }
 
+        // Şifre güncellendi mi kontrol et
+        if (userFormData.password && userFormData.password.trim() !== '') {
+          // Şifre değişikliği için Firebase Auth güncelleme gerekli
+          try {
+            // Önce mevcut kullanıcı bilgileriyle giriş yap (admin işlemi)
+            const currentUser = auth.currentUser;
+            const oldEmail = editingUser.email || `${oldPhone}@enbalsigorta.local`;
+            
+            // Geçici olarak kullanıcı hesabını güncelle
+            // NOT: Bu işlem production'da admin SDK ile yapılmalı
+            updateData.tempPassword = userFormData.password;
+            updateData.passwordUpdatedAt = new Date();
+            updateData.passwordUpdatedBy = 'admin';
+            updateData.requirePasswordChange = true; // Kullanıcı girişte şifre değiştirmeli
+            
+            console.log('🔑 Şifre güncelleme planlandı');
+          } catch (authError) {
+            console.error('Auth güncelleme hatası:', authError);
+            // Auth hatası olsa bile Firestore'u güncelle
+            updateData.tempPassword = userFormData.password;
+            updateData.passwordUpdateFailed = true;
+            updateData.passwordUpdatedAt = new Date();
+          }
+        }
+
+        // Firestore güncelleme
         await updateDoc(doc(db, 'users', editingUser.id), updateData);
         
+        let successMessage = 'Kullanıcı başarıyla güncellendi!';
         if (userFormData.password) {
-          toast.success('Kullanıcı ve şifre başarıyla güncellendi! Yeni şifreyi kullanıcıya bildirin.');
-        } else {
-          toast.success('Kullanıcı başarıyla güncellendi!');
+          successMessage += ' Yeni şifreyi kullanıcıya bildirin.';
         }
+        if (cleanPhone !== oldPhone) {
+          successMessage += ' Telefon numarası değişti - kullanıcı yeni numarası ile giriş yapmalı.';
+        }
+        
+        toast.success(successMessage);
       } else {
-        // Yeni kullanıcı ekleme
+        // YENİ KULLANICI EKLEME
+        const cleanPhone = userFormData.phone.replace(/\s/g, '');
+        const email = `${cleanPhone}@enbalsigorta.local`;
+
+        // Firebase Auth ile kullanıcı oluştur
         const userCredential = await createUserWithEmailAndPassword(
           auth, 
-          userFormData.email, 
+          email, 
           userFormData.password
         );
 
+        // Firestore'a kullanıcı verilerini kaydet
         await setDoc(doc(db, 'users', userCredential.user.uid), {
           name: userFormData.name,
           surname: userFormData.surname,
-          phone: userFormData.phone,
+          phone: cleanPhone,
           tcno: userFormData.tcno,
-          email: userFormData.email,
+          email: email, // Internal email
           role: userFormData.role,
           createdAt: new Date(),
           createdBy: 'admin',
           isActive: true,
-          tempPassword: userFormData.password // İlk şifre kaydet
+          tempPassword: userFormData.password,
+          passwordUpdatedAt: new Date()
         });
 
-        toast.success('Kullanıcı başarıyla eklendi!');
+        toast.success('Kullanıcı başarıyla eklendi! Giriş bilgilerini kullanıcıya bildirin.');
       }
 
       setShowUserModal(false);
@@ -145,11 +187,11 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
       
       let errorMessage = 'Bir hata oluştu!';
       if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'Bu email adresi zaten kullanımda!';
+        errorMessage = 'Bu telefon numarası zaten kullanımda!';
       } else if (error.code === 'auth/weak-password') {
         errorMessage = 'Şifre çok zayıf! En az 6 karakter olmalıdır.';
       } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Geçersiz email adresi!';
+        errorMessage = 'Geçersiz telefon numarası!';
       }
       
       toast.error(errorMessage);
@@ -177,11 +219,10 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
           <thead>
             <tr className="border-b">
               <th className="text-left py-3 px-4">İsim Soyisim</th>
-              <th className="text-left py-3 px-4">Email</th>
               <th className="text-left py-3 px-4">Telefon</th>
               <th className="text-left py-3 px-4">TC Kimlik</th>
               <th className="text-left py-3 px-4">Rol</th>
-              <th className="text-left py-3 px-4">Son Şifre Güncellemesi</th>
+              <th className="text-left py-3 px-4">Son Güncelleme</th>
               <th className="text-left py-3 px-4">Kayıt Tarihi</th>
               <th className="text-left py-3 px-4">İşlemler</th>
             </tr>
@@ -198,9 +239,6 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
                     </div>
                     <span className="font-medium">{user.name} {user.surname}</span>
                   </div>
-                </td>
-                <td className="py-3 px-4">
-                  <span className="text-gray-600">{user.email || '-'}</span>
                 </td>
                 <td className="py-3 px-4">
                   <a href={`tel:${user.phone}`} className="text-purple-600 hover:text-purple-800">
@@ -220,14 +258,21 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
                   </span>
                 </td>
                 <td className="py-3 px-4">
-                  {user.passwordUpdatedAt ? (
+                  {user.passwordUpdatedAt || user.updatedAt ? (
                     <div className="text-xs">
                       <div className="text-gray-800">
-                        {user.passwordUpdatedAt?.toDate?.()?.toLocaleDateString('tr-TR')}
+                        {(user.passwordUpdatedAt || user.updatedAt)?.toDate?.()?.toLocaleDateString('tr-TR')}
                       </div>
-                      <div className="text-green-600 font-medium">
-                        ✅ Güncellendi
-                      </div>
+                      {user.passwordUpdatedAt && (
+                        <div className="text-green-600 font-medium">
+                          ✅ Şifre güncellendi
+                        </div>
+                      )}
+                      {user.requirePasswordChange && (
+                        <div className="text-orange-600 font-medium">
+                          ⚠️ Şifre değiştirilmeli
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <span className="text-gray-400 text-xs">Güncellenmedi</span>
@@ -243,7 +288,7 @@ export default function UsersComponent({ users, onUsersUpdate }: UsersComponentP
                     <button
                       onClick={() => editUser(user)}
                       className="text-blue-600 hover:text-blue-800 font-medium flex items-center"
-                      title="Kullanıcı ve şifre düzenle"
+                      title="Kullanıcı düzenle"
                     >
                       <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />

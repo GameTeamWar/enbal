@@ -1,3 +1,4 @@
+// app/components/admin/UserModal.tsx - Email Kaldırılmış Versiyon
 'use client';
 
 import { useState } from 'react';
@@ -83,48 +84,43 @@ export default function UserModal({
         <form onSubmit={onSave} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">İsim</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">İsim *</label>
               <input
                 type="text"
                 required
                 value={userFormData.name}
                 onChange={(e) => onChange({...userFormData, name: e.target.value})}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="İsim"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Soyisim</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Soyisim *</label>
               <input
                 type="text"
                 required
                 value={userFormData.surname}
                 onChange={(e) => onChange({...userFormData, surname: e.target.value})}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="Soyisim"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              required
-              value={userFormData.email}
-              onChange={(e) => onChange({...userFormData, email: e.target.value})}
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Telefon Numarası *</label>
             <input
               type="tel"
               required
               value={userFormData.phone}
               onChange={(e) => onChange({...userFormData, phone: formatPhone(e.target.value)})}
-              placeholder="0XXX XXX XX XX"
+              placeholder="05XX XXX XX XX"
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              maxLength={13}
             />
+            <p className="text-xs text-gray-500 mt-1">
+              Bu telefon numarası giriş yaparken kullanılacak
+            </p>
           </div>
 
           <div>
@@ -135,15 +131,17 @@ export default function UserModal({
               onChange={(e) => onChange({...userFormData, tcno: e.target.value.replace(/\D/g, '').slice(0, 11)})}
               placeholder="11 haneli TC kimlik numarası"
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              maxLength={11}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Rol *</label>
             <select
               value={userFormData.role}
               onChange={(e) => onChange({...userFormData, role: e.target.value})}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              required
             >
               <option value="user">Kullanıcı</option>
               <option value="admin">Danışman</option>
@@ -169,7 +167,7 @@ export default function UserModal({
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {editingUser ? 'Yeni Şifre' : 'Şifre'}
+                    {editingUser ? 'Yeni Şifre' : 'Şifre *'}
                   </label>
                   <div className="relative">
                     <input
@@ -193,6 +191,9 @@ export default function UserModal({
                       </button>
                     )}
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Minimum 6 karakter olmalıdır
+                  </p>
                 </div>
 
                 <div className="flex space-x-2">
@@ -228,9 +229,12 @@ export default function UserModal({
                         <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                       </svg>
                       <div>
-                        <p className="text-yellow-800 font-medium text-xs">Önemli Uyarı</p>
+                        <p className="text-yellow-800 font-medium text-xs">Önemli Bilgilendirme</p>
                         <p className="text-yellow-700 text-xs mt-1">
-                          Bu şifreyi kopyalayıp güvenli bir yerde saklayın. Kullanıcıya telefon ile bildirilecektir.
+                          Bu şifreyi kopyalayıp güvenli bir yerde saklayın. Kullanıcıya telefon ile bildirin.
+                          {editingUser && (
+                            <><br/>Telefon numarası değişirse kullanıcı yeni numarası ile giriş yapmalıdır.</>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -240,17 +244,39 @@ export default function UserModal({
             )}
           </div>
 
+          {/* Bilgilendirme Notları */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <p className="text-blue-800 font-medium text-sm">Giriş Bilgileri</p>
+                <div className="text-blue-700 text-sm mt-1">
+                  <p>• <strong>Kullanıcı Adı:</strong> Telefon numarası (05XXXXXXXXX)</p>
+                  <p>• <strong>Şifre:</strong> Belirlenen şifre</p>
+                  <p>• Bu bilgileri kullanıcıya güvenli bir şekilde bildirin</p>
+                  {editingUser && (
+                    <p className="mt-2 text-orange-700 font-medium">
+                      ⚠️ Değişiklikler kayıt edildiğinde kullanıcının giriş bilgileri güncellenecektir.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="flex space-x-3 pt-4">
             <button
               type="submit"
-              className="flex-1 bg-purple-600 text-white py-3 px-4 rounded-lg hover:bg-purple-700 transition"
+              className="flex-1 bg-purple-600 text-white py-3 px-4 rounded-lg hover:bg-purple-700 transition font-medium"
             >
-              {editingUser ? 'Güncelle' : 'Ekle'}
+              {editingUser ? 'Güncelle' : 'Kullanıcı Ekle'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 bg-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-400 transition"
+              className="flex-1 bg-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-400 transition font-medium"
             >
               İptal
             </button>

@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '@/lib/firebase';
+import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { auth, db, storage } from '@/lib/firebase';
+import { useAdminGuard } from '@/hooks/useAuthGuard';
 import toast from 'react-hot-toast';
 import Navbar from '@/app/components/Navbar';
 import QuoteDetailModal from '@/app/components/admin/QuoteDetailModal';
@@ -12,6 +14,9 @@ import UploadModal from '@/app/components/admin/UploadModal';
 import UsersComponent from '@/app/components/admin/UsersComponent';
 
 export default function Admin() {
+  // Auth Guard - Sadece admin rolündeki kullanıcılar erişebilir
+  const { user: currentUser, loading: authLoading, isAdmin } = useAdminGuard();
+
   // States
   const [activeTab, setActiveTab] = useState('quotes');
   const [quotes, setQuotes] = useState<any[]>([]);
@@ -19,7 +24,6 @@ export default function Admin() {
   const [passwordResetRequests, setPasswordResetRequests] = useState<any[]>([]);
   const [selectedQuote, setSelectedQuote] = useState<any>(null);
   const [audioEnabled, setAudioEnabled] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>({ uid: 'admin', role: 'admin', name: 'Admin' });
   
   // Modal states
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -37,8 +41,41 @@ export default function Admin() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  // Auth loading screen
+  if (authLoading) {
+    return (
+      <>
+        <Navbar />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center pt-24">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Yetki kontrol ediliyor...</p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // Auth failed - Bu sayfa render edilmeyecek çünkü useAdminGuard otomatik yönlendirme yapacak
+  if (!isAdmin || !currentUser) {
+    return (
+      <>
+        <Navbar />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center pt-24">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">🚫</div>
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">Yetkisiz Erişim</h1>
+            <p className="text-gray-600">Bu sayfaya erişim yetkiniz bulunmamaktadır.</p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   // Fetch quotes
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'quotes'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const quotesData = snapshot.docs.map(doc => ({
@@ -49,10 +86,12 @@ export default function Admin() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Fetch password reset requests
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'passwordResetRequests'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const requestsData = snapshot.docs.map(doc => ({
@@ -63,10 +102,12 @@ export default function Admin() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Fetch users
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const usersData = snapshot.docs.map(doc => ({
@@ -77,7 +118,7 @@ export default function Admin() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Audio notification setup
   useEffect(() => {
@@ -181,7 +222,7 @@ export default function Admin() {
         status: 'responded',
         adminResponse: responseData.adminResponse,
         responseDate: new Date(),
-        respondedBy: currentUser?.uid, // Hangi danışman cevapladı
+        respondedBy: currentUser?.uid,
         updatedAt: new Date()
       };
 
@@ -211,7 +252,7 @@ export default function Admin() {
       const updateData: any = {
         status: 'rejected',
         rejectionReason: reason || 'Danışman tarafından reddedildi',
-        rejectedBy: currentUser?.uid, // Hangi danışman reddetti
+        rejectedBy: currentUser?.uid,
         rejectedAt: new Date(),
         updatedAt: new Date()
       };
@@ -268,7 +309,7 @@ export default function Admin() {
             documentUrl: downloadURL,
             documentName: uploadFile.name,
             documentUploadDate: new Date(),
-            documentUploadedBy: currentUser?.uid, // Hangi danışman yükledi
+            documentUploadedBy: currentUser?.uid,
             awaitingProcessing: false,
             updatedAt: new Date()
           });
@@ -286,12 +327,7 @@ export default function Admin() {
     );
   };
 
-  const testFirebaseStorage = () => {
-    toast.success('Firebase Storage bağlantısı test edildi!');
-  };
-
   const refreshUsers = () => {
-    // Users will be refreshed automatically due to the real-time listener
     toast.success('Kullanıcı listesi güncellendi!');
   };
 
@@ -357,16 +393,6 @@ export default function Admin() {
               
               <div className="flex items-center space-x-4">
                 <button
-                  onClick={testFirebaseStorage}
-                  className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200"
-                  title="Firebase Storage Test"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </button>
-
-                <button
                   onClick={() => setAudioEnabled(!audioEnabled)}
                   className={`p-2 rounded-lg ${audioEnabled ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'}`}
                   title={audioEnabled ? 'Sesli bildirimleri kapat' : 'Sesli bildirimleri aç'}
@@ -380,7 +406,9 @@ export default function Admin() {
                   </svg>
                 </button>
                 
-             
+                <div className="text-sm text-gray-600">
+                  Hoş geldin, <span className="font-medium">{currentUser?.name} {currentUser?.surname}</span>
+                </div>
               </div>
             </div>
 
@@ -588,10 +616,6 @@ export default function Admin() {
                                 <a href={`tel:${request.phone}`} className="ml-2 text-purple-600 hover:text-purple-800">
                                   {request.phone}
                                 </a>
-                              </div>
-                              <div>
-                                <span className="font-medium text-gray-600">Email:</span>
-                                <span className="ml-2 text-gray-800">{request.userEmail || 'Belirtilmemiş'}</span>
                               </div>
                               <div>
                                 <span className="font-medium text-gray-600">Talep Tarihi:</span>
