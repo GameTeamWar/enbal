@@ -573,7 +573,7 @@ export default function MyQuotes() {
                                     <div className="font-medium">{option.label}</div>
                                     {option.value !== '1' && (
                                       <div className="text-green-600 text-xs">
-                                        {formatPrice(calculateInstallmentAmount(quote.price, option.value))} × {option.value}
+                                        {formatPrice(calculateInstallmentAmount(quote.price, option.value).toString())} × {option.value}
                                       </div>
                                     )}
                                   </div>
@@ -846,7 +846,7 @@ export default function MyQuotes() {
                       <div className="flex justify-between text-green-600">
                         <span>Aylık Ödeme:</span>
                         <span className="font-semibold">
-                          {formatPrice(calculateInstallmentAmount(selectedQuote.price, paymentData.installments))}
+                          {formatPrice(calculateInstallmentAmount(selectedQuote.price, paymentData.installments).toString())}
                         </span>
                       </div>
                     )}
@@ -862,7 +862,7 @@ export default function MyQuotes() {
                   </svg>
                   {paymentData.installments === '1' 
                     ? `Tek Çekim Öde - ${formatPrice(selectedQuote.price)}`
-                    : `${paymentData.installments} Taksit Seç - ${formatPrice(calculateInstallmentAmount(selectedQuote.price, paymentData.installments))}/ay`
+                    : `${paymentData.installments} Taksit Seç - ${formatPrice(calculateInstallmentAmount(selectedQuote.price, paymentData.installments).toString())}/ay`
                   }
                 </button>
 
