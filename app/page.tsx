@@ -239,7 +239,7 @@ export default function Home() {
                 En&bal Sigorta İletişim Bilgileri
               </h2>
               <p className="text-xl text-gray-600">
-                Adana Tarsus'ta sigorta hizmetleri için bizimle iletişime geçin. Hemen teklif alın!
+                Sigorta hizmetleri için bizimle iletişime geçin. Hemen teklif alın!
               </p>
             </div>
             
