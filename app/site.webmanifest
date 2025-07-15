@@ -1,1 +1,84 @@
-{"name":"","short_name":"","icons":[{"src":"/android-chrome-192x192.png","sizes":"192x192","type":"image/png"},{"src":"/android-chrome-512x512.png","sizes":"512x512","type":"image/png"}],"theme_color":"#ffffff","background_color":"#ffffff","display":"standalone"}
+{
+  "name": "Enbal Sigorta - Güvenli Yarınlar İçin Doğru Adres",
+  "short_name": "Enbal Sigorta",
+  "description": "Trafik, kasko, konut, DASK sigortası ve daha fazlası için en uygun fiyatlarla hizmet veren sigorta acentesi.",
+  "icons": [
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-32x32.png", 
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#6366f1",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "start_url": "/",
+  "lang": "tr",
+  "dir": "ltr",
+  "categories": ["insurance", "finance", "business"],
+  "shortcuts": [
+    {
+      "name": "Teklif Al",
+      "short_name": "Teklif",
+      "description": "Hızlı sigorta teklifi al",
+      "url": "/#services",
+      "icons": [
+        {
+          "src": "/favicon-32x32.png",
+          "sizes": "32x32",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Tekliflerim",
+      "short_name": "Teklifler",
+      "description": "Teklif durumunu kontrol et",
+      "url": "/my-quotes",
+      "icons": [
+        {
+          "src": "/favicon-32x32.png",
+          "sizes": "32x32",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "İletişim",
+      "short_name": "İletişim",
+      "description": "Bizimle iletişime geç",
+      "url": "/#contact",
+      "icons": [
+        {
+          "src": "/favicon-32x32.png",
+          "sizes": "32x32",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

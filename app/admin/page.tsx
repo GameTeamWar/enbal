@@ -139,12 +139,69 @@ export default function Admin() {
   }
 
   // ✅ COMPUTED VALUES VE HELPER FUNCTIONS
-  const newQuotesCount = quotes.filter(quote => quote.status === 'pending').length;
-  const paidQuotesCount = quotes.filter(quote => 
-    quote.customerStatus === 'card_submitted' && 
-    quote.awaitingProcessing && 
-    !quote.documentUrl
-  ).length;
+ // app/admin/page.tsx - COMPUTED VALUES'dan sonuna kadar tam kod
+
+  // ✅ COMPUTED VALUES VE HELPER FUNCTIONS - Düzeltilmiş
+  
+  // Aktif teklif kontrolü
+  const isActiveQuote = (quote: any) => {
+    // İptal edilmiş teklifler aktif değil
+    if (quote.status === 'rejected' || quote.customerStatus === 'rejected') {
+      return false;
+    }
+    return true;
+  };
+
+  // Bekleyen teklif kontrolü  
+  const isPendingQuote = (quote: any) => {
+    return quote.status === 'pending' && isActiveQuote(quote);
+  };
+
+  // Kart bilgisi bekleyen teklif kontrolü
+  const isAwaitingPayment = (quote: any) => {
+    return quote.customerStatus === 'card_submitted' && 
+           quote.awaitingProcessing && 
+           !quote.documentUrl &&
+           isActiveQuote(quote);
+  };
+
+  // Tamamlanmış teklif kontrolü
+  const isCompletedQuote = (quote: any) => {
+    return quote.documentUrl && isActiveQuote(quote);
+  };
+
+  // İptal edilmiş teklif kontrolü
+  const isCancelledQuote = (quote: any) => {
+    return quote.status === 'rejected' || quote.customerStatus === 'rejected';
+  };
+
+  // İptal durumu kontrol fonksiyonu
+  const isQuoteCancelled = (quote: any) => {
+    return quote.status === 'rejected' || quote.customerStatus === 'rejected';
+  };
+
+  // Belge yüklemesi gerekli mi kontrol fonksiyonu
+  const shouldShowDocumentUpload = (quote: any) => {
+    // İptal edilmişse - HAYIR
+    if (isQuoteCancelled(quote)) {
+      return false;
+    }
+    
+    // Belge zaten yüklenmişse - HAYIR
+    if (quote.documentUrl) {
+      return false;
+    }
+    
+    // Kart bilgileri gönderilmiş ve işlem bekliyor mu?
+    return quote.customerStatus === 'card_submitted' && quote.awaitingProcessing;
+  };
+
+  // ✅ SAYAÇLAR - Düzeltilmiş versiyon
+  const newQuotesCount = quotes.filter(quote => isPendingQuote(quote)).length;
+  const paidQuotesCount = quotes.filter(quote => isAwaitingPayment(quote)).length;
+  const completedQuotesCount = quotes.filter(quote => isCompletedQuote(quote)).length;
+  const cancelledQuotesCount = quotes.filter(quote => isCancelledQuote(quote)).length;
+  const totalActiveQuotes = quotes.filter(quote => isActiveQuote(quote)).length;
   const pendingPasswordResets = passwordResetRequests.filter(request => request.status === 'pending').length;
 
   // Helper functions
@@ -209,6 +266,7 @@ export default function Admin() {
   };
 
   const getStatusBadge = (quote: any) => {
+    // ✅ ÖNCE İPTAL DURUMLARINI KONTROL ET
     if (quote.status === 'rejected' || quote.customerStatus === 'rejected') {
       return (
         <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">
@@ -217,6 +275,7 @@ export default function Admin() {
       );
     }
     
+    // ✅ BELGE YÜKLENMİŞ MI KONTROL ET
     if (quote.documentUrl) {
       return (
         <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
@@ -225,7 +284,8 @@ export default function Admin() {
       );
     }
     
-    if (quote.customerStatus === 'card_submitted' && quote.awaitingProcessing) {
+    // ✅ KART BİLGİLERİ GÖNDERİLMİŞ VE İŞLEM BEKLİYOR
+    if (quote.customerStatus === 'card_submitted' && quote.awaitingProcessing && !quote.documentUrl) {
       return (
         <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
           💳 Belge Bekleniyor
@@ -233,7 +293,8 @@ export default function Admin() {
       );
     }
     
-    if (quote.status === 'responded') {
+    // ✅ ADMIN CEVAP VERMİŞ AMA MÜŞTERİ HENÜZ KABUL ETMEMİŞ
+    if (quote.status === 'responded' && !quote.customerStatus) {
       return (
         <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
           📋 Cevap Verildi
@@ -241,6 +302,7 @@ export default function Admin() {
       );
     }
     
+    // ✅ HENÜZ ADMIN CEVABI YOK
     if (quote.status === 'pending') {
       return (
         <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
@@ -486,22 +548,39 @@ export default function Admin() {
               <div className="flex items-center space-x-4">
                 <h1 className="text-3xl font-bold text-gray-800">Danışman Paneli</h1>
                 <div className="flex space-x-3">
+                  {/* ✅ Yeni Teklifler - Sadece pending ve aktif olanlar */}
                   {newQuotesCount > 0 && (
                     <div className="flex items-center space-x-2 bg-red-100 text-red-800 px-3 py-1 rounded-full">
                       <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                       <span className="text-sm font-medium">{newQuotesCount} yeni teklif</span>
                     </div>
                   )}
+                  
+                  {/* ✅ Kart Bilgisi Bekleyen - Sadece aktif olanlar */}
                   {paidQuotesCount > 0 && (
                     <div className="flex items-center space-x-2 bg-orange-100 text-orange-800 px-3 py-1 rounded-full">
                       <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
                       <span className="text-sm font-medium">{paidQuotesCount} kart bilgisi bekliyor</span>
                     </div>
                   )}
+                  
+                  {/* ✅ Şifre Talepleri */}
                   {pendingPasswordResets > 0 && (
                     <div className="flex items-center space-x-2 bg-purple-100 text-purple-800 px-3 py-1 rounded-full">
                       <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
                       <span className="text-sm font-medium">{pendingPasswordResets} şifre talebi</span>
+                    </div>
+                  )}
+                  
+                  {/* ✅ Toplam Aktif Teklifler - Bilgi amaçlı */}
+                  <div className="flex items-center space-x-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
+                    <span className="text-sm font-medium">Toplam: {totalActiveQuotes} aktif</span>
+                  </div>
+                  
+                  {/* ✅ İptal Edilmiş Teklifler - Eğer varsa göster */}
+                  {cancelledQuotesCount > 0 && (
+                    <div className="flex items-center space-x-2 bg-gray-100 text-gray-700 px-3 py-1 rounded-full">
+                      <span className="text-sm font-medium">{cancelledQuotesCount} iptal</span>
                     </div>
                   )}
                 </div>
@@ -535,6 +614,7 @@ export default function Admin() {
                   className={`pb-4 px-4 relative ${activeTab === 'quotes' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-600'}`}
                 >
                   Teklif Talepleri
+                  {/* ✅ Sadece aktif teklifler için rozet */}
                   {(newQuotesCount + paidQuotesCount) > 0 && (
                     <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                       {newQuotesCount + paidQuotesCount}
@@ -578,123 +658,196 @@ export default function Admin() {
 
             {/* Quotes Tab Content */}
             {activeTab === 'quotes' && (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b bg-gray-100 text-gray-600">
-                      <th className="text-left py-3 px-4">Tarih</th>
-                      <th className="text-left py-3 px-4">Müşteri</th>
-                      <th className="text-left py-3 px-4">Sigorta Türü</th>
-                      <th className="text-left py-3 px-4">Telefon</th>
-                      <th className="text-left py-3 px-4">Fiyat</th>
-                      <th className="text-left py-3 px-4">Durum</th>
-                      <th className="text-left py-3 px-4">İşlemler</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-gray-700">
-                    {quotes.map((quote) => (
-                      <tr key={quote.id} className={`border-b ${
-                        quote.status === 'rejected' || quote.customerStatus === 'rejected' ? 'bg-red-50 border-red-200' :
-                        quote.documentUrl ? 'bg-green-50 border-green-200' :
-                        quote.customerStatus === 'card_submitted' && quote.awaitingProcessing ? 'bg-yellow-50 border-yellow-200' :
-                        quote.status === 'pending' ? 'bg-yellow-50 border-yellow-200' : 
-                        'bg-white'
-                      }`}>
-                        <td className="py-3 px-4">
-                          {quote.createdAt?.toDate?.()?.toLocaleDateString('tr-TR') || 'N/A'}
-                        </td>
-                        <td className="py-3 px-4">{quote.name || 'Misafir'}</td>
-                        <td className="py-3 px-4">{quote.insuranceType}</td>
-                        <td className="py-3 px-4">
-                          <a href={`tel:${quote.phone}`} className="text-purple-600 hover:text-purple-800">
-                            {quote.phone}
-                          </a>
-                        </td>
-                        <td className="py-3 px-4">
-                          {quote.price && (
-                            <span className="font-semibold text-green-600">
-                              {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(quote.price))}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4">
-                          {getStatusBadge(quote)}
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => showQuoteDetails(quote)}
-                              className="text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1"
-                              title="Teklif detaylarını görüntüle"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              <span>Detay</span>
-                            </button>
+              <div>
+                {/* ✅ İstatistik Özeti */}
+                <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-orange-600">{newQuotesCount}</div>
+                    <div className="text-sm text-orange-700">Yeni Teklifler</div>
+                  </div>
+                  
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-yellow-600">{paidQuotesCount}</div>
+                    <div className="text-sm text-yellow-700">Kart Bilgisi Bekleyen</div>
+                  </div>
+                  
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-green-600">{completedQuotesCount}</div>
+                    <div className="text-sm text-green-700">Tamamlanan</div>
+                  </div>
+                  
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-red-600">{cancelledQuotesCount}</div>
+                    <div className="text-sm text-red-700">İptal Edilen</div>
+                  </div>
+                </div>
 
-                            {!quote.documentUrl && quote.status !== 'rejected' && quote.customerStatus !== 'rejected' && (
-                              <button
-                                onClick={() => rejectQuote(quote)}
-                                className="text-red-600 hover:text-red-800 font-medium flex items-center space-x-1"
-                                title="Teklifi iptal et"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                                <span>İptal Et</span>
-                              </button>
-                            )}
+                {/* ✅ Aktif Teklifler Uyarısı */}
+                {totalActiveQuotes === 0 && quotes.length > 0 && (
+                  <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-center">
+                      <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-yellow-800">
+                        <strong>Bilgi:</strong> Toplam {quotes.length} teklif var ancak hepsi iptal edilmiş durumda.
+                      </span>
+                    </div>
+                  </div>
+                )}
 
-                            <button
-                              onClick={() => deleteQuote(quote)}
-                              className="text-red-700 hover:text-red-900 font-medium flex items-center space-x-1"
-                              title="Teklifi kalıcı olarak sil"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                              <span>Sil</span>
-                            </button>
+                {/* ✅ Hiç Teklif Yoksa */}
+                {quotes.length === 0 && (
+                  <div className="text-center py-12">
+                    <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-gray-500 text-lg">Henüz teklif talebi bulunmamaktadır.</p>
+                    <p className="text-gray-400 text-sm mt-2">Yeni teklifler buraya görünecektir.</p>
+                  </div>
+                )}
 
-                            {quote.status === 'pending' && (
-                              <button
-                                onClick={() => handleQuoteResponse(quote)}
-                                className="text-green-600 hover:text-green-800 font-medium"
-                              >
-                                Cevapla
-                              </button>
-                            )}
-                            
-                            {quote.customerStatus === 'card_submitted' && 
-                             !quote.documentUrl && 
-                             quote.status !== 'rejected' && 
-                             quote.customerStatus !== 'rejected' && (
-                              <button
-                                onClick={() => handleDocumentUpload(quote)}
-                                className="text-green-600 hover:text-green-800 font-medium"
-                              >
-                                Belge Yükle
-                              </button>
-                            )}
-                            
-                            <button
-                              onClick={() => {
-                                window.open(`https://wa.me/90${quote.phone.replace(/\D/g, '')}`, '_blank');
-                              }}
-                              className="text-green-600 hover:text-green-800"
-                              title="WhatsApp ile iletişim"
-                            >
-                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.886 3.75"/>
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {/* ✅ Teklifler Tablosu */}
+                {quotes.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b bg-gray-100 text-gray-600">
+                          <th className="text-left py-3 px-4">Tarih</th>
+                          <th className="text-left py-3 px-4">Müşteri</th>
+                          <th className="text-left py-3 px-4">Sigorta Türü</th>
+                          <th className="text-left py-3 px-4">Telefon</th>
+                          <th className="text-left py-3 px-4">Fiyat</th>
+                          <th className="text-left py-3 px-4">Durum</th>
+                          <th className="text-left py-3 px-4">İşlemler</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-gray-700">
+                        {quotes.map((quote) => (
+                          <tr key={quote.id} className={`border-b ${
+                            quote.status === 'rejected' || quote.customerStatus === 'rejected' ? 'bg-red-50 border-red-200' :
+                            quote.documentUrl ? 'bg-green-50 border-green-200' :
+                            quote.customerStatus === 'card_submitted' && quote.awaitingProcessing ? 'bg-yellow-50 border-yellow-200' :
+                            quote.status === 'pending' ? 'bg-yellow-50 border-yellow-200' : 
+                            'bg-white'
+                          }`}>
+                            <td className="py-3 px-4">
+                              {quote.createdAt?.toDate?.()?.toLocaleDateString('tr-TR') || 'N/A'}
+                            </td>
+                            <td className="py-3 px-4">{quote.name || 'Misafir'}</td>
+                            <td className="py-3 px-4">{quote.insuranceType}</td>
+                            <td className="py-3 px-4">
+                              <a href={`tel:${quote.phone}`} className="text-purple-600 hover:text-purple-800">
+                                {quote.phone}
+                              </a>
+                            </td>
+                            <td className="py-3 px-4">
+                              {quote.price && (
+                                <span className="font-semibold text-green-600">
+                                  {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(parseFloat(quote.price))}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              {getStatusBadge(quote)}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex space-x-2">
+                                {/* Detay Butonu - Her zaman görünür */}
+                                <button
+                                  onClick={() => showQuoteDetails(quote)}
+                                  className="text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1"
+                                  title="Teklif detaylarını görüntüle"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  <span>Detay</span>
+                                </button>
+
+                                {/* ✅ İPTAL BUTONU - Sadece iptal edilmemiş ve belge yüklenmemiş teklifler için */}
+                                {!isQuoteCancelled(quote) && !quote.documentUrl && (
+                                  <button
+                                    onClick={() => rejectQuote(quote)}
+                                    className="text-red-600 hover:text-red-800 font-medium flex items-center space-x-1"
+                                    title="Teklifi iptal et"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                    <span>İptal Et</span>
+                                  </button>
+                                )}
+
+                                {/* Sil Butonu - Her zaman görünür (admin yetkisi) */}
+                                <button
+                                  onClick={() => deleteQuote(quote)}
+                                  className="text-red-700 hover:text-red-900 font-medium flex items-center space-x-1"
+                                  title="Teklifi kalıcı olarak sil"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                  <span>Sil</span>
+                                </button>
+
+                                {/* ✅ CEVAPLA BUTONU - Sadece pending durumunda */}
+                                {quote.status === 'pending' && !isQuoteCancelled(quote) && (
+                                  <button
+                                    onClick={() => handleQuoteResponse(quote)}
+                                    className="text-green-600 hover:text-green-800 font-medium flex items-center space-x-1"
+                                    title="Teklifi cevapla"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                    </svg>
+                                    <span>Cevapla</span>
+                                  </button>
+                                )}
+                                
+                                {/* ✅ BELGE YÜKLE BUTONU - Sadece gerekli durumlarda göster */}
+                                {shouldShowDocumentUpload(quote) && (
+                                  <button
+                                    onClick={() => handleDocumentUpload(quote)}
+                                    className="text-green-600 hover:text-green-800 font-medium flex items-center space-x-1"
+                                    title="Sigorta belgelerini yükle"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                    </svg>
+                                    <span>Belge Yükle</span>
+                                  </button>
+                                )}
+                                
+                                {/* WhatsApp Butonu - Her zaman görünür */}
+                                <button
+                                  onClick={() => {
+                                    window.open(`https://wa.me/90${quote.phone.replace(/\D/g, '')}`, '_blank');
+                                  }}
+                                  className="text-green-600 hover:text-green-800"
+                                  title="WhatsApp ile iletişim"
+                                >
+                                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.886 3.75"/>
+                                  </svg>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* ✅ DEBUG BİLGİSİ (Development ortamında) */}
+                {process.env.NODE_ENV === 'development' && (
+                  <div className="mt-4 p-3 bg-gray-100 rounded text-xs text-gray-600">
+                    <strong>Debug:</strong> Toplam: {quotes.length}, Aktif: {totalActiveQuotes}, 
+                    Pending: {newQuotesCount}, Bekleyen: {paidQuotesCount}, 
+                    Tamamlanan: {completedQuotesCount}, İptal: {cancelledQuotesCount}
+                  </div>
+                )}
               </div>
             )}
 
@@ -720,114 +873,94 @@ export default function Admin() {
                     {passwordResetRequests.map((request) => (
                       <div 
                         key={request.id} 
-                        className={`border rounded-lg p-6 ${
+                        className={`border rounded-lg p-6 flex items-center justify-between ${
                           request.status === 'pending' ? 'border-purple-200 bg-purple-50' :
                           request.status === 'completed' ? 'border-green-200 bg-green-50' :
                           'border-gray-200 bg-gray-50'
                         }`}
                       >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-3">
-                              <h3 className="font-semibold text-gray-800">
-                                {request.userName} {request.userSurname}
-                              </h3>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                request.status === 'pending' ? 'bg-purple-100 text-purple-800' :
-                                request.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
-                                {request.status === 'pending' ? '⏳ Beklemede' :
-                                 request.status === 'completed' ? '✅ Tamamlandı' :
-                                 '❌ İptal Edildi'}
-                              </span>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <span className="font-medium text-gray-600">Telefon:</span>
-                                <a href={`tel:${request.phone}`} className="ml-2 text-purple-600 hover:text-purple-800">
-                                  {request.phone}
-                                </a>
-                              </div>
-                              <div>
-                                <span className="font-medium text-gray-600">Talep Tarihi:</span>
-                                <span className="ml-2 text-gray-800">
-                                  {request.requestDate?.toDate?.()?.toLocaleString('tr-TR') || 'N/A'}
-                                </span>
-                              </div>
-                              {request.completedAt && (
-                                <div>
-                                  <span className="font-medium text-gray-600">Tamamlanma:</span>
-                                  <span className="ml-2 text-gray-800">
-                                    {request.completedAt?.toDate?.()?.toLocaleString('tr-TR')}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-3 mb-3">
+                            <h3 className="font-semibold text-gray-800">
+                              {request.userName} {request.userSurname}
+                            </h3>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              request.status === 'pending' ? 'bg-purple-100 text-purple-800' :
+                              request.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {request.status === 'pending' ? '⏳ Beklemede' :
+                               request.status === 'completed' ? '✅ Tamamlandı' :
+                               '❌ İptal Edildi'}
+                            </span>
                           </div>
                           
-                          <div className="flex space-x-2 ml-4">
-                            <button
-                              onClick={() => {
-                                window.open(`https://wa.me/90${request.phone.replace(/\D/g, '')}`, '_blank');
-                              }}
-                              className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-                              title="WhatsApp ile ara"
-                            >
-                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.886 3.75"/>
-                              </svg>
-                            </button>
-
-                            <a
-                              href={`tel:${request.phone}`}
-                              className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                              title="Telefon ara"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                              </svg>
-                            </a>
-
-                            {request.status === 'pending' && (
-                              <>
-                                <button
-                                  onClick={() => handlePasswordResetComplete(request)}
-                                  className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
-                                  title="Talebi tamamla"
-                                >
-                                  ✅ Tamamla
-                                </button>
-                                <button
-                                  onClick={() => handlePasswordResetCancel(request)}
-                                  className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
-                                  title="Talebi iptal et"
-                                >
-                                  ❌ İptal
-                                </button>
-                              </>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-600">Telefon:</span>
+                              <a href={`tel:${request.phone}`} className="ml-2 text-purple-600 hover:text-purple-800">
+                                {request.phone}
+                              </a>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-600">Talep Tarihi:</span>
+                              <span className="ml-2 text-gray-800">
+                                {request.requestDate?.toDate?.()?.toLocaleString('tr-TR') || 'N/A'}
+                              </span>
+                            </div>
+                            {request.completedAt && (
+                              <div>
+                                <span className="font-medium text-gray-600">Tamamlanma:</span>
+                                <span className="ml-2 text-gray-800">
+                                  {request.completedAt?.toDate?.()?.toLocaleString('tr-TR')}
+                                </span>
+                              </div>
                             )}
                           </div>
                         </div>
+                        
+                        <div className="flex space-x-2 ml-4">
+                          <button
+                            onClick={() => {
+                              window.open(`https://wa.me/90${request.phone.replace(/\D/g, '')}`, '_blank');
+                            }}
+                            className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                            title="WhatsApp ile ara"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.886 3.75"/>
+                            </svg>
+                          </button>
 
-                        {request.status === 'pending' && (
-                          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                            <div className="flex items-start">
-                              <svg className="w-4 h-4 text-yellow-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                              </svg>
-                              <div>
-                                <p className="text-yellow-800 font-medium text-xs">Yapılacaklar</p>
-                                <p className="text-yellow-700 text-xs mt-1">
-                                  1. Kullanıcıyı arayarak kimlik doğrulaması yapın<br/>
-                                  2. Kullanıcı panelinden yeni şifre oluşturup telefon ile bildirin<br/>
-                                  3. İşlem tamamlandıktan sonra "Tamamla" butonuna tıklayın
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
+                          <a
+                            href={`tel:${request.phone}`}
+                            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                            title="Telefon ara"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                            </svg>
+                          </a>
+
+                          {request.status === 'pending' && (
+                            <>
+                              <button
+                                onClick={() => handlePasswordResetComplete(request)}
+                                className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
+                                title="Talebi tamamla"
+                              >
+                                ✅ Tamamla
+                              </button>
+                              <button
+                                onClick={() => handlePasswordResetCancel(request)}
+                                className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
+                                title="Talebi iptal et"
+                              >
+                                ❌ İptal
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
