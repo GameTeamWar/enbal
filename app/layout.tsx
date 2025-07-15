@@ -1,4 +1,4 @@
-// app/layout.tsx - SEO Optimized Version
+// app/layout.tsx - SEO Optimized Version with Bottom-Right Toast
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
@@ -296,7 +296,31 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         {children}
-        <Toaster position="top-right" />
+        {/* ✅ Toast notification'ları sol aşağıda konumlandır */}
+        <Toaster 
+          position="bottom-left"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: '#363636',
+              color: '#fff',
+            },
+            success: {
+              duration: 3000,
+              iconTheme: {
+                primary: '#10B981',
+                secondary: '#fff',
+              },
+            },
+            error: {
+              duration: 5000,
+              iconTheme: {
+                primary: '#EF4444',
+                secondary: '#fff',
+              },
+            },
+          }}
+        />
       </body>
     </html>
   )

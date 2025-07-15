@@ -95,19 +95,48 @@ input:-moz-autofill:focus {
   background-color: #ffffff !important;
 }
 
-/* Toast bildirimleri için navbar altında konumlandırma */
+/* ✅ Toast bildirimleri için SOL AŞAĞI konumlandırma - Daha güçlü override */
+[data-hot-toast] {
+  position: fixed !important;
+  bottom: 20px !important;
+  left: 20px !important;
+  right: auto !important;
+  top: auto !important;
+  transform: none !important;
+}
+
 .react-hot-toast-container {
-  top: 150px !important; /* Navbar yüksekliği + margin */
+  position: fixed !important;
+  bottom: 20px !important;
+  left: 20px !important;
+  right: auto !important;
+  top: auto !important;
+  transform: none !important;
+  z-index: 9999 !important;
 }
 
 /* Toast bildirimlerinin z-index'ini navbar'dan düşük tut */
 .react-hot-toast {
   z-index: 40 !important; /* Navbar z-index 50, bu 40 */
+  max-width: 350px !important; /* Maksimum genişlik */
+  position: relative !important;
 }
 
-/* Mobil cihazlarda daha az margin */
+/* Mobil cihazlarda daha küçük margin */
 @media (max-width: 768px) {
+  [data-hot-toast] {
+    bottom: 10px !important;
+    left: 10px !important;
+    right: auto !important;
+  }
+  
   .react-hot-toast-container {
-    top: 70px !important;
+    bottom: 10px !important;
+    left: 10px !important;
+    right: auto !important;
+  }
+  
+  .react-hot-toast {
+    max-width: 100% !important;
   }
 }
