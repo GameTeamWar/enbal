@@ -1004,7 +1004,6 @@ export default function Admin() {
           onQuoteResponse={handleQuoteResponse}
           onDocumentUpload={handleDocumentUpload}
           onRejectQuote={rejectQuote}
-          onDeleteQuote={deleteQuote}
           getStatusBadge={getStatusBadge}
           copyToClipboard={copyToClipboard}
         />
