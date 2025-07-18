@@ -1,7 +1,7 @@
 // app/admin/page.tsx - Updated with Social Media Tab
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebase';
@@ -32,6 +32,7 @@ export default function Admin() {
   const [showResponseModal, setShowResponseModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showAudioSettingsModal, setShowAudioSettingsModal] = useState(false);
   
   // Form states
   const [responseData, setResponseData] = useState({
@@ -44,6 +45,76 @@ export default function Admin() {
   // Upload states
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  // Audio settings
+  const [audioSettings, setAudioSettings] = useState({
+    enabled: false,
+    repeatCount: 3,
+    volume: 0.7
+  });
+
+  // ✅ Load user audio preferences on mount
+  useEffect(() => {
+    if (currentUser?.uid) {
+      const savedSettings = localStorage.getItem(`audioSettings_${currentUser.uid}`);
+      if (savedSettings) {
+        try {
+          const parsed = JSON.parse(savedSettings);
+          setAudioSettings(parsed);
+          setAudioEnabled(parsed.enabled);
+        } catch (error) {
+          console.error('Error loading audio settings:', error);
+        }
+      }
+    }
+  }, [currentUser?.uid]);
+
+  // ✅ Save user audio preferences - Fixed with useCallback
+  const saveAudioSettings = useCallback((newSettings: typeof audioSettings) => {
+    if (currentUser?.uid) {
+      localStorage.setItem(`audioSettings_${currentUser.uid}`, JSON.stringify(newSettings));
+      setAudioSettings(newSettings);
+      setAudioEnabled(newSettings.enabled);
+      toast.success('Ses ayarları kaydedildi!');
+    }
+  }, [currentUser?.uid]);
+
+  // ✅ Handle audio toggle - Fixed to prevent setState during render
+  const handleAudioToggle = useCallback(() => {
+    const newSettings = { ...audioSettings, enabled: !audioSettings.enabled };
+    saveAudioSettings(newSettings);
+  }, [audioSettings, saveAudioSettings]);
+
+  // ✅ Play notification sound function
+  const playNotificationSound = () => {
+    if (!audioSettings.enabled) return;
+    
+    try {
+      const audio = new Audio('/notification.mp3');
+      audio.volume = audioSettings.volume;
+      
+      let playCount = 0;
+      const maxPlays = audioSettings.repeatCount;
+      
+      const playNext = () => {
+        if (playCount < maxPlays) {
+          audio.currentTime = 0;
+          audio.play().then(() => {
+            playCount++;
+            if (playCount < maxPlays) {
+              setTimeout(playNext, 1000); // 1 second delay between repeats
+            }
+          }).catch((error) => {
+            console.error('Audio play error:', error);
+          });
+        }
+      };
+      
+      playNext();
+    } catch (error) {
+      console.error('Notification sound error:', error);
+    }
+  };
 
   // ✅ Real-time Firestore Listeners - Düzeltilmiş
   useEffect(() => {
@@ -59,7 +130,20 @@ export default function Admin() {
         ...doc.data()
       }));
       console.log('📋 Quotes updated:', quotesData.length);
-      setQuotes(quotesData);
+      
+      // ✅ Check for new quotes to trigger notification - IMPROVED
+      setQuotes(prevQuotes => {
+        const previousCount = prevQuotes.length;
+        const newCount = quotesData.length;
+        
+        // Only trigger notification if we have more quotes than before AND audio is enabled
+        if (previousCount > 0 && newCount > previousCount && audioSettings.enabled) {
+          console.log('🔔 New quote detected, playing notification sound');
+          playNotificationSound();
+        }
+        
+        return quotesData;
+      });
     }, (error) => {
       console.error('❌ Quotes listener error:', error);
       toast.error('Teklifler yüklenirken hata oluştu!');
@@ -100,15 +184,7 @@ export default function Admin() {
       unsubscribeUsers();
       unsubscribePasswordResets();
     };
-  }, [currentUser, isAdmin]);
-
-  // Audio notification setup
-  useEffect(() => {
-    if (audioEnabled && quotes.length > 0) {
-      const audio = new Audio('/notification.mp3');
-      audio.play().catch(() => console.log('Audio play failed'));
-    }
-  }, [quotes.length, audioEnabled]);
+  }, [currentUser, isAdmin, audioSettings.enabled]); // ✅ Added audioSettings.enabled to dependencies
 
   // ✅ KOŞULLU RENDERING'İ EN SONDA YAP
   if (authLoading) {
@@ -561,20 +637,33 @@ export default function Admin() {
                 </div>
                 
                 <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-                  <button
-                    onClick={() => setAudioEnabled(!audioEnabled)}
-                    className={`p-2 rounded-lg transition self-start sm:self-auto ${audioEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
-                    title={audioEnabled ? 'Bildirim sesini kapat' : 'Bildirim sesini aç'}
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      {audioEnabled ? (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9v6a3 3 0 11-6 0V9a3 3 0 116 0z" />
-                      ) : (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                      )}
-                    </svg>
-                  </button>
-                  
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleAudioToggle}
+                      className={`p-2 rounded-lg transition ${audioSettings.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
+                      title={audioSettings.enabled ? 'Bildirim sesini kapat' : 'Bildirim sesini aç'}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        {audioSettings.enabled ? (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9v6a3 3 0 11-6 0V9a3 3 0 116 0z" />
+                        ) : (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                        )}
+                      </svg>
+                    </button>
+                    
+                    <button
+                      onClick={() => setShowAudioSettingsModal(true)}
+                      className="p-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+                      title="Ses ayarları"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </button>
+                  </div>
+
                   <div className="text-sm text-gray-600">
                     Hoş geldin, <span className="font-medium">{currentUser?.name} {currentUser?.surname}</span>
                   </div>
@@ -850,6 +939,7 @@ export default function Admin() {
                             </td>
                           </tr>
                         ))}
+
                       </tbody>
                     </table>
                   </div>
@@ -910,6 +1000,7 @@ export default function Admin() {
                             </span>
                           </div>
                           
+
                           <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
                               <span className="font-medium text-gray-600">Telefon:</span>
@@ -978,6 +1069,7 @@ export default function Admin() {
                         </div>
                       </div>
                     ))}
+
                   </div>
                 )}
               </div>
@@ -1041,6 +1133,114 @@ export default function Admin() {
           }}
           onConfirm={confirmDeleteQuote}
         />
+
+        {/* ✅ Audio Settings Modal */}
+        {showAudioSettingsModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-semibold text-gray-800">Bildirim Ses Ayarları</h3>
+                <button
+                  onClick={() => setShowAudioSettingsModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Enable/Disable */}
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700">Bildirim Sesi</label>
+                  <button
+                    onClick={() => setAudioSettings(prev => ({ ...prev, enabled: !prev.enabled }))}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      audioSettings.enabled ? 'bg-green-600' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        audioSettings.enabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Repeat Count */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Tekrar Sayısı: {audioSettings.repeatCount} kez
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={audioSettings.repeatCount}
+                    onChange={(e) => setAudioSettings(prev => ({ ...prev, repeatCount: parseInt(e.target.value) }))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>1 kez</span>
+                    <span>10 kez</span>
+                  </div>
+                </div>
+
+                {/* Volume */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Ses Seviyesi: {Math.round(audioSettings.volume * 100)}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.1"
+                    value={audioSettings.volume}
+                    onChange={(e) => setAudioSettings(prev => ({ ...prev, volume: parseFloat(e.target.value) }))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>10%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+
+                {/* Test Button */}
+                <button
+                  onClick={() => {
+                    const testAudio = new Audio('/notification.mp3');
+                    testAudio.volume = audioSettings.volume;
+                    testAudio.play().catch(() => toast.error('Ses test edilemedi!'));
+                  }}
+                  className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  disabled={!audioSettings.enabled}
+                >
+                  🔊 Sesi Test Et
+                </button>
+              </div>
+
+              <div className="flex space-x-3 mt-6">
+                <button
+                  onClick={() => setShowAudioSettingsModal(false)}
+                  className="flex-1 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                >
+                  İptal
+                </button>
+                <button
+                  onClick={() => {
+                    saveAudioSettings(audioSettings);
+                    setShowAudioSettingsModal(false);
+                  }}
+                  className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                >
+                  Kaydet
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

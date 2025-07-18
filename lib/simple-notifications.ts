@@ -16,9 +16,11 @@ export class SimpleBrowserNotifications {
   private userId: string | null = null;
   private unsubscribe: (() => void) | null = null;
   private lastNotificationTime: number = 0;
-  // ✅ Çoklu bildirim engelleyici - gösterilen bildirim ID'lerini takip et
   private shownNotificationIds: Set<string> = new Set();
   private isInitialLoad: boolean = true;
+  // ✅ YENİ: Service Worker ve Push Subscription
+  private serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
+  private pushSubscription: PushSubscription | null = null;
 
   static getInstance(): SimpleBrowserNotifications {
     if (!SimpleBrowserNotifications.instance) {
@@ -27,7 +29,104 @@ export class SimpleBrowserNotifications {
     return SimpleBrowserNotifications.instance;
   }
 
-  // Browser notification izni alma
+  // ✅ Service Worker kayıt fonksiyonu
+  private async registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+      console.log('❌ Service Worker desteklenmiyor');
+      return null;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js', {
+        scope: '/'
+      });
+      
+      console.log('✅ Service Worker kaydedildi:', registration.scope);
+      
+      // Service Worker'ın aktif olmasını bekle
+      await navigator.serviceWorker.ready;
+      
+      this.serviceWorkerRegistration = registration;
+      return registration;
+    } catch (error) {
+      console.error('❌ Service Worker kayıt hatası:', error);
+      return null;
+    }
+  }
+
+  // ✅ Push Subscription oluştur
+  private async createPushSubscription(): Promise<PushSubscription | null> {
+    if (!this.serviceWorkerRegistration) {
+      console.log('❌ Service Worker bulunamadı');
+      return null;
+    }
+
+    try {
+      // VAPID public key (production'da environment variable olarak kullanın)
+      const publicVapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 
+        'BEl62iUYgUivxIkv69yViEuiBIa40HI80NMtg3-k6RJOjDZksP-0k0BoHKn8ZGNxSHqXp4AKZeM6R7lbOOyQO0E';
+      
+      const pushSubscription = await this.serviceWorkerRegistration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: this.urlBase64ToUint8Array(publicVapidKey)
+      });
+
+      console.log('✅ Push Subscription oluşturuldu');
+      this.pushSubscription = pushSubscription;
+      
+      // Subscription'ı sunucuya kaydet
+      await this.savePushSubscription(pushSubscription);
+      
+      return pushSubscription;
+    } catch (error) {
+      console.error('❌ Push Subscription hatası:', error);
+      return null;
+    }
+  }
+
+  // ✅ VAPID key conversion utility
+  private urlBase64ToUint8Array(base64String: string): Uint8Array {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  // ✅ Push Subscription'ı sunucuya kaydet
+  private async savePushSubscription(subscription: PushSubscription): Promise<void> {
+    if (!this.userId) return;
+
+    try {
+      const response = await fetch('/api/save-push-subscription', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: this.userId,
+          subscription: subscription.toJSON()
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Push subscription kayıt hatası');
+      }
+
+      console.log('✅ Push subscription sunucuya kaydedildi');
+    } catch (error) {
+      console.error('❌ Push subscription kayıt hatası:', error);
+    }
+  }
+
+  // Browser notification izni alma - GÜNCELLEME
   async requestPermission(): Promise<boolean> {
     if (typeof window === 'undefined' || !('Notification' in window)) {
       console.log('❌ Browser notification desteklemiyor');
@@ -42,6 +141,15 @@ export class SimpleBrowserNotifications {
       }
       
       console.log('📋 Notification permission:', permission);
+      
+      if (permission === 'granted') {
+        // ✅ İzin alındıysa Service Worker'ı kaydet
+        await this.registerServiceWorker();
+        
+        // ✅ Push Subscription oluştur
+        await this.createPushSubscription();
+      }
+      
       return permission === 'granted';
     } catch (error) {
       console.error('Notification permission error:', error);
@@ -49,12 +157,12 @@ export class SimpleBrowserNotifications {
     }
   }
 
-  // Kullanıcı için notification sistemi kurma
+  // Kullanıcı için notification sistemi kurma - GÜNCELLEME
   async setupForUser(userId: string): Promise<boolean> {
     this.userId = userId;
     
     try {
-      // 1. Permission al
+      // 1. Permission al ve Service Worker kaydet
       const hasPermission = await this.requestPermission();
       if (!hasPermission) {
         throw new Error('Notification permission denied');
@@ -69,6 +177,7 @@ export class SimpleBrowserNotifications {
       // 4. Kullanıcı bilgilerini güncelle
       await updateDoc(doc(db, 'users', userId), {
         browserNotificationsEnabled: true,
+        pushNotificationsEnabled: !!this.pushSubscription,
         notificationSetupDate: new Date(),
         lastNotificationCheck: new Date()
       });
@@ -77,13 +186,13 @@ export class SimpleBrowserNotifications {
       setTimeout(() => {
         this.showNotification({
           title: '🎉 Bildirimler Aktif!',
-          body: 'Teklif güncellemeleriniz hakkında bilgilendirileceksiniz.',
+          body: 'Artık tarayıcı kapalı olsa bile bildirim alabileceksiniz!',
           icon: '/favicon.ico',
           tag: 'setup-notification'
         });
       }, 1000);
 
-      console.log('✅ Simple notification system aktif edildi');
+      console.log('✅ Enhanced notification system aktif edildi');
       return true;
     } catch (error) {
       console.error('Notification setup error:', error);
@@ -237,7 +346,7 @@ export class SimpleBrowserNotifications {
     console.log('🎧 Simple notification listener başlatıldı');
   }
 
-  // Browser notification göster
+  // Browser notification göster - GÜNCELLEME
   showNotification(data: NotificationData) {
     if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') {
       console.log('❌ Notifications not available or permission not granted');
@@ -245,9 +354,36 @@ export class SimpleBrowserNotifications {
     }
     
     try {
-      // ✅ Aynı tag'li notification varsa önce kapat
+      // ✅ Service Worker varsa onu kullan (tarayıcı kapalı olsa bile çalışır)
+      if (this.serviceWorkerRegistration) {
+        this.serviceWorkerRegistration.showNotification(data.title, {
+          body: data.body,
+          icon: data.icon || '/favicon.ico',
+          badge: '/favicon.ico',
+          tag: data.tag || `enbal-notification-${Date.now()}`,
+          requireInteraction: true,
+          silent: false,
+          actions: [
+            {
+              action: 'open',
+              title: 'Aç'
+            },
+            {
+              action: 'close', 
+              title: 'Kapat'
+            }
+          ],
+          data: data.data || { url: '/my-quotes' }
+        } as any);
+        
+        console.log('📨 Service Worker notification gösterildi:', data.title);
+        this.playAdvancedNotificationSound();
+        return;
+      }
+
+      // ✅ Fallback: Normal browser notification
+      // Aynı tag'li notification varsa önce kapat
       if (data.tag) {
-        // Eski notification'ı kapat (varsa)
         const existingNotifications = (window as any).currentNotifications || new Map();
         if (existingNotifications.has(data.tag)) {
           const oldNotification = existingNotifications.get(data.tag);
@@ -260,7 +396,7 @@ export class SimpleBrowserNotifications {
         body: data.body,
         icon: data.icon || '/favicon.ico',
         badge: '/favicon.ico',
-        tag: data.tag || `enbal-notification-${Date.now()}`, // Unique tag garantisi
+        tag: data.tag || `enbal-notification-${Date.now()}`,
         requireInteraction: true,
         silent: false
       });
@@ -307,21 +443,26 @@ export class SimpleBrowserNotifications {
       console.log('📨 Notification gösterildi:', data.title);
       
       // Basit sistem sesi çal
-      this.playSimpleNotificationSound();
+      this.playAdvancedNotificationSound();
       
     } catch (error) {
       console.error('Notification display error:', error);
     }
   }
 
-  // Basit sistem sesi - dosya gerektirmez
-  private playSimpleNotificationSound() {
+  // ✅ Gelişmiş notification sesi - Mobil ve masaüstü uyumlu
+  private playAdvancedNotificationSound() {
     try {
-      // Web Audio API ile basit notification sesi oluştur
+      // Mobil cihazlarda vibration
+      if ('vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200, 100, 200]);
+      }
+
+      // Ses çalma
       if (typeof window !== 'undefined' && 'AudioContext' in window) {
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
         
-        // İki tonlu notification sesi
+        // Çift tonlu notification sesi - mobil uyumlu
         const oscillator1 = audioContext.createOscillator();
         const oscillator2 = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
@@ -330,30 +471,32 @@ export class SimpleBrowserNotifications {
         oscillator2.connect(gainNode);
         gainNode.connect(audioContext.destination);
         
-        // İlk ton
-        oscillator1.frequency.value = 800;
+        // İlk ton - daha yumuşak
+        oscillator1.frequency.value = 880;
         oscillator1.type = 'sine';
         
-        // İkinci ton (harmonik)
-        oscillator2.frequency.value = 1000;
+        // İkinci ton - harmonik
+        oscillator2.frequency.value = 1100;
         oscillator2.type = 'sine';
         
-        // Ses seviyesi
-        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        // Ses seviyesi - mobilde daha düşük
+        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const volume = isMobile ? 0.05 : 0.1;
+        
+        gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
         
         // Sesi başlat ve durdur
         oscillator1.start(audioContext.currentTime);
-        oscillator1.stop(audioContext.currentTime + 0.15);
+        oscillator1.stop(audioContext.currentTime + 0.2);
         
-        oscillator2.start(audioContext.currentTime + 0.1);
-        oscillator2.stop(audioContext.currentTime + 0.25);
+        oscillator2.start(audioContext.currentTime + 0.15);
+        oscillator2.stop(audioContext.currentTime + 0.35);
         
-        console.log('🔊 Notification sesi çalındı');
+        console.log('🔊 Enhanced notification sesi çalındı');
       }
     } catch (error: any) {
       console.log('Ses çalma hatası (normal):', error.message);
-      // Ses çalmazsa sorun değil, notification yine de gösterilir
     }
   }
 
@@ -371,12 +514,12 @@ export class SimpleBrowserNotifications {
     }
   }
 
-  // Test notification
+  // Test notification - GÜNCELLEME
   showTestNotification() {
     const testId = `test-${Date.now()}`;
     this.showNotification({
       title: '🎉 Test Bildirimi',
-      body: 'Browser notification sistemi mükemmel çalışıyor! 🚀',
+      body: 'Enhanced notification sistemi mükemmel çalışıyor! Tarayıcı kapalı olsa bile alabilirsiniz 🚀',
       icon: '/favicon.ico',
       tag: testId,
       data: {
@@ -386,19 +529,23 @@ export class SimpleBrowserNotifications {
     });
   }
 
-  // Sistem durumunu kontrol et
+  // Sistem durumunu kontrol et - GÜNCELLEME
   getStatus(): { 
     permission: NotificationPermission | 'unsupported';
     isSetup: boolean;
     isListening: boolean;
     shownCount: number;
+    hasServiceWorker: boolean;
+    hasPushSubscription: boolean;
   } {
     if (typeof window === 'undefined' || !('Notification' in window)) {
       return {
         permission: 'unsupported',
         isSetup: false,
         isListening: false,
-        shownCount: 0
+        shownCount: 0,
+        hasServiceWorker: false,
+        hasPushSubscription: false
       };
     }
 
@@ -406,7 +553,9 @@ export class SimpleBrowserNotifications {
       permission: Notification.permission,
       isSetup: !!this.userId,
       isListening: !!this.unsubscribe,
-      shownCount: this.shownNotificationIds.size
+      shownCount: this.shownNotificationIds.size,
+      hasServiceWorker: !!this.serviceWorkerRegistration,
+      hasPushSubscription: !!this.pushSubscription
     };
   }
 

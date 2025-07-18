@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // Firestore'a bildirim kaydet - real-time listener bunları yakalayacak
+    // ✅ 1. Firestore'a bildirim kaydet (real-time listener için)
     const notificationData = {
       userId,
       type,
@@ -42,31 +42,61 @@ export async function POST(request: Request) {
       title,
       message: body,
       read: false,
-      triggered: true, // Server tarafından tetiklendi
+      triggered: true,
       createdAt: serverTimestamp()
     };
 
     const docRef = await addDoc(collection(db, 'notifications'), notificationData);
     
+    // ✅ 2. Push Notification gönder (tarayıcı kapalı olsa bile çalışır)
+    if (userData.pushSubscription && userData.pushNotificationsEnabled) {
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/send-push-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId,
+            title,
+            body,
+            data: {
+              url: '/my-quotes',
+              quoteId,
+              type,
+              notificationId: docRef.id
+            }
+          }),
+        });
+        
+        console.log('✅ Push notification da gönderildi');
+      } catch (pushError) {
+        console.error('⚠️ Push notification hatası:', pushError);
+        // Push notification hatası olsa bile normal notification devam eder
+      }
+    }
+    
     console.log('✅ Browser notification tetiklendi:', {
       notificationId: docRef.id,
       userId,
       title,
-      type
+      type,
+      hasPushSubscription: !!userData.pushSubscription
     });
 
     return NextResponse.json({ 
       success: true, 
-      message: 'Browser notification tetiklendi',
+      message: 'Notification gönderildi (browser + push)',
       notificationId: docRef.id,
-      type: 'browser_triggered'
+      type: 'enhanced_notification',
+      pushSent: !!userData.pushSubscription
     });
 
   } catch (error: any) {
-    console.error('❌ Browser notification trigger hatası:', error);
+    console.error('❌ Enhanced notification trigger hatası:', error);
     return NextResponse.json({ 
       success: false, 
-      message: 'Browser notification tetiklenemedi',
+      message: 'Notification tetiklenemedi',
       error: error.message
     }, { status: 500 });
   }
