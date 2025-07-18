@@ -1,20 +1,23 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
-// Email ayarları
+// Email ayarları - FIXED
 const EMAIL_CONFIG = {
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
   auth: {
-    user: process.env.EMAIL_USER || 'your-email@gmail.com',
-    pass: process.env.EMAIL_PASS || 'your-app-password'
+    user: process.env.EMAIL_USER || 'enbal50@gmail.com',
+    pass: process.env.EMAIL_PASS || 'vzpuhqgflicyruyk'
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 };
 
 const ADMIN_EMAILS = [
-  process.env.ADMIN_EMAIL_1 || 'admin1@enbalsigorta.com',
-  process.env.ADMIN_EMAIL_2 || 'admin2@enbalsigorta.com'
+  process.env.ADMIN_EMAIL_1 || 'enbal50@gmail.com',
+  process.env.ADMIN_EMAIL_2 || 'enbal50@gmail.com'
 ];
 
 export async function POST(request: Request) {
@@ -53,10 +56,16 @@ async function sendCardInfoNotification({ quoteId, customerName, insuranceType, 
   paymentInfo: any;
 }) {
   try {
+    console.log('📧 Kart bilgileri email gönderiliyor...');
+    
     const transporter = nodemailer.createTransport(EMAIL_CONFIG);
 
+    // SMTP bağlantısını test et
+    await transporter.verify();
+    console.log('✅ SMTP bağlantısı başarılı (payment notification)');
+
     const mailOptions = {
-      from: EMAIL_CONFIG.auth.user,
+      from: `"Enbal Sigorta Sistem" <${EMAIL_CONFIG.auth.user}>`,
       to: ADMIN_EMAILS.join(','),
       subject: `💳 Kart Bilgileri Alındı - Teklif ID: ${quoteId}`,
       html: `
@@ -120,10 +129,14 @@ async function sendCardInfoNotification({ quoteId, customerName, insuranceType, 
       `
     };
 
-    await transporter.sendMail(mailOptions);
-    console.log('Kart bilgileri bildirimi gönderildi');
-  } catch (error) {
-    console.error('Email gönderim hatası:', error);
+    const result = await transporter.sendMail(mailOptions);
+    console.log('✅ Kart bilgileri email gönderildi:', result.messageId);
+    
+  } catch (error: any) {
+    console.error('❌ Kart bilgileri email hatası:', {
+      error: error.message,
+      code: error.code
+    });
     throw error;
   }
 }

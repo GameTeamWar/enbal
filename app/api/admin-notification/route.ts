@@ -2,14 +2,14 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
-// ✅ ENBAL SİGORTA EMAİL AYARLARI
+// ✅ ENBAL SİGORTA EMAİL AYARLARI - FIXED
 const EMAIL_CONFIG = {
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
   auth: {
     user: process.env.EMAIL_USER || 'enbal50@gmail.com',
-    pass: process.env.EMAIL_PASS || 'veoqnqlvhoofwohq'
+    pass: process.env.EMAIL_PASS || 'vzpuhqgflicyruyk'
   },
   // Gmail için ek ayarlar
   tls: {
@@ -22,13 +22,14 @@ console.log('🔧 Email Config Debug:', {
   user: EMAIL_CONFIG.auth.user,
   hasPassword: !!EMAIL_CONFIG.auth.pass,
   passwordLength: EMAIL_CONFIG.auth.pass?.length,
-  isAppPassword: EMAIL_CONFIG.auth.pass?.length === 16
+  isAppPassword: EMAIL_CONFIG.auth.pass?.length === 16,
+  actualPassword: process.env.NODE_ENV === 'development' ? EMAIL_CONFIG.auth.pass : '***hidden***'
 });
 
 // ✅ ENBAL SİGORTA ADMIN EMAİL ADRESLERİ
 const ADMIN_EMAILS = [
   process.env.ADMIN_EMAIL_1 || 'enbal50@gmail.com',
-  process.env.ADMIN_EMAIL_2 || 'enbal50@gmail.com' // info@enbalsigorta.com yerine test için
+  process.env.ADMIN_EMAIL_2 || 'enbal50@gmail.com'
 ];
 
 export async function POST(request: Request) {
@@ -40,23 +41,32 @@ export async function POST(request: Request) {
       type,
       insuranceType,
       customerName,
-      customerPhone: customerPhone?.substring(0, 7) + '****' // Privacy için son 4 hanesi gizli
+      customerPhone: customerPhone?.substring(0, 7) + '****'
     });
 
     if (type === 'new_quote') {
-      // Email gönderme
-      await sendEmailNotification({
+      // ✅ Email gönderme - Enhanced error handling
+      const emailResult = await sendEmailNotification({
         insuranceType,
         customerName,
         customerPhone
       });
 
-      console.log('✅ Email bildirimi başarıyla gönderildi');
-
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Email bildirimi gönderildi' 
-      });
+      if (emailResult.success) {
+        console.log('✅ Email bildirimi başarıyla gönderildi');
+        return NextResponse.json({ 
+          success: true, 
+          message: 'Email bildirimi gönderildi',
+          details: emailResult.details
+        });
+      } else {
+        console.error('❌ Email gönderimi başarısız:', emailResult.error);
+        return NextResponse.json({ 
+          success: false, 
+          message: 'Email gönderilemedi',
+          error: emailResult.error
+        }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ 
@@ -78,7 +88,7 @@ async function sendEmailNotification({ insuranceType, customerName, customerPhon
   insuranceType: string;
   customerName: string;
   customerPhone: string;
-}) {
+}): Promise<{ success: boolean; error?: string; details?: any }> {
   try {
     console.log('📤 Gmail SMTP ile email gönderiliyor...', {
       from: EMAIL_CONFIG.auth.user,
@@ -86,20 +96,30 @@ async function sendEmailNotification({ insuranceType, customerName, customerPhon
       configCheck: {
         hasUser: !!EMAIL_CONFIG.auth.user,
         hasPass: !!EMAIL_CONFIG.auth.pass,
-        passLength: EMAIL_CONFIG.auth.pass?.length
+        passLength: EMAIL_CONFIG.auth.pass?.length,
+        passPreview: EMAIL_CONFIG.auth.pass?.substring(0, 4) + '****'
       }
     });
 
     const transporter = nodemailer.createTransport({
       ...EMAIL_CONFIG,
-      debug: true, // SMTP debug'ını etkinleştir
-      logger: true // Logger'ı etkinleştir
+      debug: process.env.NODE_ENV === 'development', // Sadece development'ta debug
+      logger: process.env.NODE_ENV === 'development'
     });
 
-    // SMTP bağlantısını test et
+    // ✅ SMTP bağlantısını test et
     console.log('🔍 SMTP bağlantısı test ediliyor...');
-    await transporter.verify();
-    console.log('✅ SMTP bağlantısı başarılı');
+    
+    try {
+      await transporter.verify();
+      console.log('✅ SMTP bağlantısı başarılı');
+    } catch (verifyError: any) {
+      console.error('❌ SMTP verify failed:', verifyError.message);
+      return {
+        success: false,
+        error: `SMTP bağlantı hatası: ${verifyError.message}`
+      };
+    }
 
     const mailOptions = {
       from: `"Enbal Sigorta Sistem" <${EMAIL_CONFIG.auth.user}>`,
@@ -177,16 +197,6 @@ async function sendEmailNotification({ insuranceType, customerName, customerPhon
                 </div>
               </div>
             </div>
-            
-            <!-- Contact Info -->
-            <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin: 25px 0;">
-              <h3 style="color: #334155; margin-top: 0; margin-bottom: 15px; font-size: 16px;">📞 Hızlı İletişim</h3>
-              <div style="display: flex; flex-wrap: wrap; gap: 15px;">
-                <a href="tel:${customerPhone}" style="color: #3b82f6; text-decoration: none; font-weight: 500; padding: 8px 16px; background: white; border-radius: 6px; border: 1px solid #e2e8f0;">📱 Telefon Et</a>
-                <a href="https://wa.me/90${customerPhone.replace(/\D/g, '')}" style="color: #059669; text-decoration: none; font-weight: 500; padding: 8px 16px; background: white; border-radius: 6px; border: 1px solid #e2e8f0;">💬 WhatsApp</a>
-                <a href="sms:${customerPhone}" style="color: #7c3aed; text-decoration: none; font-weight: 500; padding: 8px 16px; background: white; border-radius: 6px; border: 1px solid #e2e8f0;">💬 SMS</a>
-              </div>
-            </div>
           </div>
           
           <!-- Footer -->
@@ -210,22 +220,42 @@ async function sendEmailNotification({ insuranceType, customerName, customerPhon
     console.log('✅ Email başarıyla gönderildi:', {
       messageId: result.messageId,
       accepted: result.accepted,
-      rejected: result.rejected
+      rejected: result.rejected,
+      response: result.response
     });
 
+    return {
+      success: true,
+      details: {
+        messageId: result.messageId,
+        accepted: result.accepted,
+        rejected: result.rejected
+      }
+    };
+
   } catch (error: any) {
-    console.error('❌ Email gönderim hatası:', {
+    console.error('❌ Email gönderim hatası detayı:', {
       error: error.message,
       code: error.code,
       command: error.command,
-      response: error.response
+      response: error.response,
+      responseCode: error.responseCode
     });
     
-    // SMTP authentication hatası için özel mesaj
+    // Gmail özel hata mesajları
+    let errorMessage = error.message;
+    
     if (error.code === 'EAUTH') {
-      console.error('❌ SMTP Authentication failed. Uygulama şifresi kontrol edin!');
+      errorMessage = 'Gmail uygulama şifresi hatalı. Lütfen doğru app password kullanın.';
+    } else if (error.code === 'ECONNECTION') {
+      errorMessage = 'Gmail SMTP sunucusuna bağlanılamıyor.';
+    } else if (error.responseCode === 535) {
+      errorMessage = 'Gmail kimlik doğrulama başarısız. App password kontrol edin.';
     }
     
-    throw error;
+    return {
+      success: false,
+      error: errorMessage
+    };
   }
 }
