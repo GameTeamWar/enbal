@@ -1,6 +1,6 @@
 // lib/simple-notifications.ts - Çoklu Bildirim Engelleyici Sistem
 
-import { doc, updateDoc, onSnapshot, collection, query, where, orderBy, limit } from 'firebase/firestore';
+import { doc, updateDoc, onSnapshot, collection, query, where, orderBy, limit, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 interface NotificationData {
@@ -102,27 +102,76 @@ export class SimpleBrowserNotifications {
 
   // ✅ Push Subscription'ı sunucuya kaydet
   private async savePushSubscription(subscription: PushSubscription): Promise<void> {
-    if (!this.userId) return;
+    if (!this.userId) {
+      console.warn('⚠️ userId bulunamadı, push subscription kayıt edilemiyor');
+      return;
+    }
 
     try {
+      console.log('💾 Push subscription kaydediliyor...', {
+        userId: this.userId,
+        endpoint: subscription.endpoint.substring(0, 50) + '...'
+      });
+      
+      const requestBody = {
+        userId: this.userId,
+        subscription: subscription.toJSON()
+      };
+      
+      console.log('📤 API request gönderiliyor:', {
+        url: '/api/save-push-subscription',
+        userId: requestBody.userId,
+        hasSubscription: !!requestBody.subscription
+      });
+      
       const response = await fetch('/api/save-push-subscription', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          userId: this.userId,
-          subscription: subscription.toJSON()
-        }),
+        body: JSON.stringify(requestBody),
       });
 
+      console.log('📥 API response alındı:', {
+        status: response.status,
+        ok: response.ok,
+        statusText: response.statusText
+      });
+
+      let result;
+      try {
+        result = await response.json();
+        console.log('📄 API response body:', result);
+      } catch (parseError) {
+        console.error('❌ Response parse hatası:', parseError);
+        const responseText = await response.text();
+        console.error('❌ Raw response:', responseText);
+        throw new Error('API response parse edilemedi: ' + responseText);
+      }
+      
       if (!response.ok) {
-        throw new Error('Push subscription kayıt hatası');
+        console.error('❌ Push subscription API hatası:', {
+          status: response.status,
+          statusText: response.statusText,
+          result: result
+        });
+        throw new Error(result?.message || `API Error: ${response.status} ${response.statusText}`);
       }
 
-      console.log('✅ Push subscription sunucuya kaydedildi');
-    } catch (error) {
-      console.error('❌ Push subscription kayıt hatası:', error);
+      console.log('✅ Push subscription sunucuya kaydedildi:', result);
+    } catch (error: any) {
+      console.error('❌ Push subscription kayıt hatası:', {
+        error: error.message,
+        userId: this.userId,
+        stack: error.stack
+      });
+      // Push subscription hatası olsa bile sistem çalışmaya devam etsin
+      console.log('⚠️ Push notification devre dışı, sadece browser notification aktif');
+      
+      // Re-throw sadece kritik hatalarda
+      if (error.message.includes('404') || error.message.includes('Kullanıcı bulunamadı')) {
+        throw error;
+      }
     }
   }
 
@@ -146,8 +195,13 @@ export class SimpleBrowserNotifications {
         // ✅ İzin alındıysa Service Worker'ı kaydet
         await this.registerServiceWorker();
         
-        // ✅ Push Subscription oluştur
-        await this.createPushSubscription();
+        // ✅ Push Subscription oluştur (hata olsa bile devam et)
+        try {
+          await this.createPushSubscription();
+        } catch (pushError) {
+          console.warn('⚠️ Push Subscription oluşturulamadı:', pushError);
+          // Push subscription başarısız olsa bile browser notification çalışır
+        }
       }
       
       return permission === 'granted';
@@ -162,7 +216,7 @@ export class SimpleBrowserNotifications {
     this.userId = userId;
     
     try {
-      // 1. Permission al ve Service Worker kaydet
+      // 1. Permission al
       const hasPermission = await this.requestPermission();
       if (!hasPermission) {
         throw new Error('Notification permission denied');
@@ -174,25 +228,39 @@ export class SimpleBrowserNotifications {
       // 3. Real-time dinleme başlat
       this.startSimpleListener(userId);
 
-      // 4. Kullanıcı bilgilerini güncelle
-      await updateDoc(doc(db, 'users', userId), {
+      // 4. Kullanıcı bilgilerini güncelle - push subscription durumuna göre
+      const updateData: any = {
         browserNotificationsEnabled: true,
-        pushNotificationsEnabled: !!this.pushSubscription,
         notificationSetupDate: new Date(),
         lastNotificationCheck: new Date()
-      });
+      };
+
+      // Push subscription varsa onu da ekle
+      if (this.pushSubscription) {
+        updateData.pushNotificationsEnabled = true;
+      }
+
+      await updateDoc(doc(db, 'users', userId), updateData);
 
       // 5. Setup notification göster (sadece ilk kurulumda)
       setTimeout(() => {
+        let message = 'Teklif güncellemeleriniz hakkında bilgilendirileceksiniz.';
+        if (this.pushSubscription) {
+          message = 'Artık tarayıcı kapalı olsa bile bildirim alabileceksiniz!';
+        }
+        
         this.showNotification({
           title: '🎉 Bildirimler Aktif!',
-          body: 'Artık tarayıcı kapalı olsa bile bildirim alabileceksiniz!',
+          body: message,
           icon: '/favicon.ico',
           tag: 'setup-notification'
         });
       }, 1000);
 
-      console.log('✅ Enhanced notification system aktif edildi');
+      console.log('✅ Enhanced notification system aktif edildi', {
+        hasPushSubscription: !!this.pushSubscription,
+        hasServiceWorker: !!this.serviceWorkerRegistration
+      });
       return true;
     } catch (error) {
       console.error('Notification setup error:', error);
@@ -208,18 +276,17 @@ export class SimpleBrowserNotifications {
     console.log('🔄 Notification tracking sıfırlandı');
   }
 
-  // ✅ Düzeltilmiş Real-time Firestore dinleyici - Çoklu bildirim engelleyici
+  // ✅ Real-time Firestore dinleyici - DEBUG eklendi
   private startSimpleListener(userId: string) {
     if (this.unsubscribe) {
       this.unsubscribe();
     }
 
-    // SADECE kullanıcı ID'si ile filtreleme - index gerektirmez
     const q = query(
       collection(db, 'notifications'),
       where('userId', '==', userId),
       orderBy('createdAt', 'desc'),
-      limit(10) // Sadece son 10 bildirimi takip et
+      limit(10)
     );
 
     this.unsubscribe = onSnapshot(q, (snapshot) => {
@@ -229,16 +296,13 @@ export class SimpleBrowserNotifications {
         lastNotificationTime: new Date(this.lastNotificationTime).toLocaleTimeString()
       });
 
-      // İlk yükleme ise (sayfa yenilenme vb.) sadece tracking'i başlat, bildirim gösterme
       if (this.isInitialLoad) {
         snapshot.docs.forEach(doc => {
           const notification = doc.data();
           const notificationTime = notification.createdAt?.toMillis() || 0;
           
-          // Mevcut bildirimleri tracking'e ekle
           this.shownNotificationIds.add(doc.id);
           
-          // En son bildirim zamanını güncelle
           if (notificationTime > this.lastNotificationTime) {
             this.lastNotificationTime = notificationTime;
           }
@@ -249,35 +313,40 @@ export class SimpleBrowserNotifications {
         return;
       }
 
-      // ✅ Sadece GERÇEK yeni bildirimleri işle
+      // ✅ GERÇEK yeni bildirimleri işle
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const notification = change.doc.data();
           const notificationId = change.doc.id;
           const notificationTime = notification.createdAt?.toMillis() || Date.now();
           
-          // ✅ ÇOKLU BİLDİRİM ENGELLEYİCİ KONTROLLER:
+          console.log('🔍 YENİ BİLDİRİM KONTROL:', {
+            id: notificationId,
+            title: notification.title,
+            triggered: notification.triggered,
+            read: notification.read,
+            shownBefore: this.shownNotificationIds.has(notificationId),
+            timeCheck: notificationTime > this.lastNotificationTime,
+            ageMinutes: Math.round((Date.now() - notificationTime) / 60000)
+          });
           
-          // 1. Bu bildirim daha önce gösterildi mi?
+          // KONTROLLER
           if (this.shownNotificationIds.has(notificationId)) {
             console.log('⚠️ Bu bildirim zaten gösterildi:', notificationId);
             return;
           }
           
-          // 2. Bu bildirim son bildirim zamanından sonra mı oluşturuldu?
           if (notificationTime <= this.lastNotificationTime) {
             console.log('⚠️ Bu bildirim eski:', {
               notificationTime: new Date(notificationTime).toLocaleTimeString(),
               lastTime: new Date(this.lastNotificationTime).toLocaleTimeString()
             });
-            // Yine de tracking'e ekle
             this.shownNotificationIds.add(notificationId);
             return;
           }
           
-          // 3. Bildirim çok eski mi? (5 dakikadan eski bildirimleri gösterme)
           const now = Date.now();
-          const isOld = (now - notificationTime) > (5 * 60 * 1000); // 5 dakika
+          const isOld = (now - notificationTime) > (5 * 60 * 1000);
           if (isOld) {
             console.log('⚠️ Bu bildirim çok eski:', {
               notificationTime: new Date(notificationTime).toLocaleTimeString(),
@@ -287,14 +356,12 @@ export class SimpleBrowserNotifications {
             return;
           }
           
-          // 4. Bu bildirim okunmuş mu?
           if (notification.read) {
             console.log('⚠️ Bu bildirim zaten okunmuş:', notificationId);
             this.shownNotificationIds.add(notificationId);
             return;
           }
           
-          // 5. Bildirim triggered işareti var mı? (server tarafından tetiklenen)
           if (!notification.triggered) {
             console.log('⚠️ Bu bildirim triggered değil:', notificationId);
             this.shownNotificationIds.add(notificationId);
@@ -302,18 +369,20 @@ export class SimpleBrowserNotifications {
           }
 
           // ✅ TÜM KONTROLLER BAŞARILI - BİLDİRİMİ GÖSTER
-          console.log('🎯 YENİ BİLDİRİM GÖSTER:', {
+          console.log('🎯 BİLDİRİM GÖSTERİLECEK:', {
             id: notificationId,
             title: notification.title,
+            message: notification.message,
             time: new Date(notificationTime).toLocaleTimeString(),
             type: notification.type
           });
 
+          // ✅ MASAÜSTÜ BİLDİRİMİ GÖSTER
           this.showNotification({
             title: notification.title || 'Enbal Sigorta',
             body: notification.message || 'Yeni bildiriminiz var',
             icon: '/favicon.ico',
-            tag: `notification-${notificationId}`, // Her bildirim için unique tag
+            tag: `notification-${notificationId}`,
             data: {
               notificationId: notificationId,
               url: '/my-quotes',
@@ -333,11 +402,10 @@ export class SimpleBrowserNotifications {
       });
     }, (error) => {
       console.error('❌ Notification listener error:', error);
-      // Hata durumunda 15 saniye sonra tekrar dene
       setTimeout(() => {
         if (this.userId) {
           console.log('🔄 Notification listener yeniden başlatılıyor...');
-          this.resetNotificationTracking(); // Tracking'i sıfırla
+          this.resetNotificationTracking();
           this.startSimpleListener(this.userId);
         }
       }, 15000);
@@ -348,14 +416,30 @@ export class SimpleBrowserNotifications {
 
   // Browser notification göster - GÜNCELLEME
   showNotification(data: NotificationData) {
-    if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') {
-      console.log('❌ Notifications not available or permission not granted');
+    console.log('🔔 showNotification çağrıldı:', data);
+    
+    if (typeof window === 'undefined') {
+      console.log('❌ Window undefined - server-side rendering');
+      return;
+    }
+    
+    if (!('Notification' in window)) {
+      console.log('❌ Notification API desteklenmiyor');
+      return;
+    }
+    
+    if (Notification.permission !== 'granted') {
+      console.log('❌ Notification permission:', Notification.permission);
       return;
     }
     
     try {
+      console.log('✅ Notification koşulları sağlandı, gösteriliyor...');
+      
       // ✅ Service Worker varsa onu kullan (tarayıcı kapalı olsa bile çalışır)
       if (this.serviceWorkerRegistration) {
+        console.log('📱 Service Worker notification gösteriliyor...');
+        
         this.serviceWorkerRegistration.showNotification(data.title, {
           body: data.body,
           icon: data.icon || '/favicon.ico',
@@ -374,14 +458,35 @@ export class SimpleBrowserNotifications {
             }
           ],
           data: data.data || { url: '/my-quotes' }
-        } as any);
+        } as any).then(() => {
+          console.log('✅ Service Worker notification başarılı');
+          this.playAdvancedNotificationSound();
+        }).catch((error) => {
+          console.error('❌ Service Worker notification hatası:', error);
+          // Fallback to regular notification
+          this.showRegularNotification(data);
+        });
         
-        console.log('📨 Service Worker notification gösterildi:', data.title);
-        this.playAdvancedNotificationSound();
         return;
       }
 
       // ✅ Fallback: Normal browser notification
+      console.log('📋 Regular browser notification gösteriliyor...');
+      this.showRegularNotification(data);
+      
+    } catch (error) {
+      console.error('❌ Notification display error:', error);
+      
+      // Son çare: Alert göster
+      if (confirm(`${data.title}\n\n${data.body}\n\nBu bildirimi açmak ister misiniz?`)) {
+        window.open(data.data?.url || '/my-quotes', '_blank');
+      }
+    }
+  }
+
+  // ✅ YENİ: Regular notification fallback
+  private showRegularNotification(data: NotificationData) {
+    try {
       // Aynı tag'li notification varsa önce kapat
       if (data.tag) {
         const existingNotifications = (window as any).currentNotifications || new Map();
@@ -411,6 +516,7 @@ export class SimpleBrowserNotifications {
 
       // Notification click event
       notification.onclick = () => {
+        console.log('🔔 Notification clicked');
         window.focus();
         
         // Notification verilerini kontrol et
@@ -440,93 +546,92 @@ export class SimpleBrowserNotifications {
         }
       }, 20000);
 
-      console.log('📨 Notification gösterildi:', data.title);
+      console.log('✅ Regular notification gösterildi:', data.title);
       
-      // Basit sistem sesi çal
+      // Ses çal
       this.playAdvancedNotificationSound();
       
     } catch (error) {
-      console.error('Notification display error:', error);
+      console.error('❌ Regular notification error:', error);
+      
+      // Son çare fallback
+      this.showFallbackNotification(data);
     }
   }
 
-  // ✅ Gelişmiş notification sesi - Mobil ve masaüstü uyumlu
-  private playAdvancedNotificationSound() {
-    try {
-      // Mobil cihazlarda vibration
-      if ('vibrate' in navigator) {
-        navigator.vibrate([200, 100, 200, 100, 200]);
+  // ✅ YENİ: Son çare fallback
+  private showFallbackNotification(data: NotificationData) {
+    console.log('🚨 Fallback notification gösteriliyor...');
+    
+    // Toast-style notification
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 16px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 10000;
+      max-width: 350px;
+      cursor: pointer;
+      animation: slideIn 0.3s ease-out;
+    `;
+    
+    toast.innerHTML = `
+      <div style="font-weight: bold; margin-bottom: 4px;">${data.title}</div>
+      <div style="font-size: 14px; opacity: 0.9;">${data.body}</div>
+      <div style="font-size: 12px; opacity: 0.7; margin-top: 8px;">Tıklayın →</div>
+    `;
+    
+    // Click handler
+    toast.onclick = () => {
+      window.open(data.data?.url || '/my-quotes', '_blank');
+      toast.remove();
+    };
+    
+    document.body.appendChild(toast);
+    
+    // 10 saniye sonra otomatik kaldır
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.remove();
       }
-
-      // Ses çalma
-      if (typeof window !== 'undefined' && 'AudioContext' in window) {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        
-        // Çift tonlu notification sesi - mobil uyumlu
-        const oscillator1 = audioContext.createOscillator();
-        const oscillator2 = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator1.connect(gainNode);
-        oscillator2.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        // İlk ton - daha yumuşak
-        oscillator1.frequency.value = 880;
-        oscillator1.type = 'sine';
-        
-        // İkinci ton - harmonik
-        oscillator2.frequency.value = 1100;
-        oscillator2.type = 'sine';
-        
-        // Ses seviyesi - mobilde daha düşük
-        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const volume = isMobile ? 0.05 : 0.1;
-        
-        gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
-        
-        // Sesi başlat ve durdur
-        oscillator1.start(audioContext.currentTime);
-        oscillator1.stop(audioContext.currentTime + 0.2);
-        
-        oscillator2.start(audioContext.currentTime + 0.15);
-        oscillator2.stop(audioContext.currentTime + 0.35);
-        
-        console.log('🔊 Enhanced notification sesi çalındı');
-      }
-    } catch (error: any) {
-      console.log('Ses çalma hatası (normal):', error.message);
-    }
-  }
-
-  // Bildirimi okundu olarak işaretle
-  private async markAsRead(notificationId: string) {
-    try {
-      await updateDoc(doc(db, 'notifications', notificationId), {
-        read: true,
-        readAt: new Date(),
-        shownInBrowser: true // Browser'da gösterildi işareti
-      });
-      console.log('📖 Notification marked as read:', notificationId);
-    } catch (error) {
-      console.error('Mark as read error:', error);
-    }
+    }, 10000);
+    
+    // Ses çal
+    this.playAdvancedNotificationSound();
   }
 
   // Test notification - GÜNCELLEME
   showTestNotification() {
+    console.log('🧪 Test notification başlatılıyor...');
+    
     const testId = `test-${Date.now()}`;
-    this.showNotification({
+    const testData = {
       title: '🎉 Test Bildirimi',
-      body: 'Enhanced notification sistemi mükemmel çalışıyor! Tarayıcı kapalı olsa bile alabilirsiniz 🚀',
+      body: 'Notification sistemi test ediliyor! Bu mesajı görüyorsanız her şey çalışıyor 🚀',
       icon: '/favicon.ico',
       tag: testId,
       data: {
         url: '/my-quotes',
-        type: 'test'
+        type: 'test',
+        timestamp: Date.now()
       }
-    });
+    };
+    
+    console.log('🧪 Test data:', testData);
+    
+    // Önce permission kontrolü yap
+    if (Notification.permission !== 'granted') {
+      console.log('❌ Test için permission gerekli:', Notification.permission);
+      alert('Test bildirimi için önce izin verilmeli! Lütfen "Bildirimleri Aktif Et" butonuna basın.');
+      return;
+    }
+    
+    this.showNotification(testData);
   }
 
   // Sistem durumunu kontrol et - GÜNCELLEME
@@ -537,7 +642,21 @@ export class SimpleBrowserNotifications {
     shownCount: number;
     hasServiceWorker: boolean;
     hasPushSubscription: boolean;
+    debug: any;
   } {
+    const debug = {
+      hasWindow: typeof window !== 'undefined',
+      hasNotificationAPI: typeof window !== 'undefined' && 'Notification' in window,
+      permission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unknown',
+      userId: this.userId,
+      serviceWorkerRegistration: !!this.serviceWorkerRegistration,
+      pushSubscription: !!this.pushSubscription,
+      unsubscribe: !!this.unsubscribe,
+      shownIds: this.shownNotificationIds.size
+    };
+    
+    console.log('📊 Notification status debug:', debug);
+    
     if (typeof window === 'undefined' || !('Notification' in window)) {
       return {
         permission: 'unsupported',
@@ -545,7 +664,8 @@ export class SimpleBrowserNotifications {
         isListening: false,
         shownCount: 0,
         hasServiceWorker: false,
-        hasPushSubscription: false
+        hasPushSubscription: false,
+        debug: debug
       };
     }
 
@@ -555,8 +675,53 @@ export class SimpleBrowserNotifications {
       isListening: !!this.unsubscribe,
       shownCount: this.shownNotificationIds.size,
       hasServiceWorker: !!this.serviceWorkerRegistration,
-      hasPushSubscription: !!this.pushSubscription
+      hasPushSubscription: !!this.pushSubscription,
+      debug: debug
     };
+  }
+
+  // ✅ Bildirimi okundu olarak işaretle
+  private async markAsRead(notificationId: string): Promise<void> {
+    try {
+      await updateDoc(doc(db, 'notifications', notificationId), {
+        read: true,
+        readAt: new Date()
+      });
+      console.log('✅ Notification marked as read:', notificationId);
+    } catch (error) {
+      console.error('❌ Mark as read error:', error);
+    }
+  }
+
+  // ✅ Bildirim sesi çal
+  private playAdvancedNotificationSound(): void {
+    try {
+      if (typeof window === 'undefined') return;
+      
+      // Modern Audio API kullan
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // Kısa bip sesi oluştur
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800; // 800Hz
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+      
+      console.log('🔊 Notification ses çalındı');
+    } catch (error) {
+      console.warn('⚠️ Notification ses çalınamadı:', error);
+      // Fallback: Sessiz devam et
+    }
   }
 
   // ✅ Debug bilgileri
@@ -583,6 +748,7 @@ export class SimpleBrowserNotifications {
       // Database'i güncelle
       await updateDoc(doc(db, 'users', userId), {
         browserNotificationsEnabled: false,
+        pushNotificationsEnabled: false, // ✅ Push notification da kapat
         notificationDisabledDate: new Date()
       });
 
@@ -598,11 +764,47 @@ export class SimpleBrowserNotifications {
         (window as any).currentNotifications.clear();
       }
 
+      // ✅ Service Worker notification'larını da temizle
+      if (this.serviceWorkerRegistration) {
+        try {
+          const notifications = await this.serviceWorkerRegistration.getNotifications();
+          notifications.forEach(notification => notification.close());
+        } catch (error) {
+          console.log('Service Worker notifications temizlenemedi:', error);
+        }
+      }
+
       console.log('❌ Notification system disabled');
     } catch (error) {
       console.error('Notification disable error:', error);
       throw error;
     }
+  }
+
+  // ✅ Manual bildirim tetikleme fonksiyonu (TEST için)
+  triggerTestNotificationFromFirestore() {
+    if (!this.userId) {
+      console.error('❌ UserId yok, test bildirimi tetiklenemez');
+      return;
+    }
+
+    console.log('🧪 Firestore\'a test bildirimi ekleniyor...');
+    
+    // Firestore'a manuel bildirim ekle
+    addDoc(collection(db, 'notifications'), {
+      userId: this.userId,
+      type: 'test',
+      title: '🧪 Test Bildirimi (Firestore)',
+      message: 'Bu bildirim Firestore üzerinden tetiklendi ve real-time listener tarafından yakalandı!',
+      read: false,
+      triggered: true,
+      createdAt: serverTimestamp(),
+      testNotification: true
+    }).then((docRef) => {
+      console.log('✅ Test bildirimi Firestore\'a eklendi:', docRef.id);
+    }).catch((error) => {
+      console.error('❌ Test bildirimi eklenemedi:', error);
+    });
   }
 }
 
@@ -652,6 +854,7 @@ export const triggerServerNotification = async (userId: string, notificationData
   title: string;
   body: string;
   type: string;
+  data?: any;
   quoteId?: string;
   insuranceType?: string;
 }) => {
@@ -662,7 +865,7 @@ export const triggerServerNotification = async (userId: string, notificationData
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        userId,
+        userId: userId,
         ...notificationData
       }),
     });
