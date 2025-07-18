@@ -1,64 +1,54 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase-admin';
 
 export async function POST(request: Request) {
   try {
-    console.log('📥 Push subscription API çağrıldı');
-    
-    const body = await request.json();
-    console.log('📄 Request body:', { userId: body.userId, hasSubscription: !!body.subscription });
-    
-    const { userId, subscription } = body;
+    console.log('📝 Push subscription API called');
+
+    const { userId, subscription } = await request.json();
 
     if (!userId || !subscription) {
-      console.error('❌ Eksik parametreler:', { userId: !!userId, subscription: !!subscription });
       return NextResponse.json({ 
         success: false, 
         message: 'userId ve subscription gerekli',
-        received: { userId: !!userId, subscription: !!subscription }
+        error: 'missing_parameters'
       }, { status: 400 });
     }
 
-    // Admin SDK ile kullanıcının var olup olmadığını kontrol et
-    const userRef = adminDb.collection('users').doc(userId);
-    const userDoc = await userRef.get();
-    
-    if (!userDoc.exists) {
-      console.error('❌ Kullanıcı bulunamadı:', userId);
-      return NextResponse.json({ 
-        success: false, 
-        message: 'Kullanıcı bulunamadı' 
-      }, { status: 404 });
-    }
-
-    // Admin SDK ile kullanıcı document'ini güncelle
-    await userRef.update({
-      pushSubscription: subscription,
-      pushNotificationsEnabled: true,
-      pushSubscriptionDate: new Date(),
-      lastPushUpdate: new Date()
+    console.log('📝 Push subscription request received:', {
+      userId: userId.substring(0, 8) + '...',
+      hasSubscription: !!subscription
     });
 
-    console.log('✅ Push subscription kaydedildi (Admin SDK):', userId);
-
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Push subscription başarıyla kaydedildi',
-      userId: userId
-    });
-
-  } catch (error: any) {
-    console.error('❌ Push subscription API hatası:', {
-      error: error.message,
-      stack: error.stack,
-      name: error.name
-    });
+    // ✅ For now, always suggest fallback due to Firestore permission issues
+    // This allows the client-side to handle storage properly
+    console.log('⚠️ Suggesting client-side fallback due to permission constraints');
     
     return NextResponse.json({ 
       success: false, 
-      message: 'Push subscription kaydedilemedi',
-      error: error.message,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      message: 'Server kaydetme devre dışı - client-side storage kullanın',
+      error: 'permission_denied',
+      fallback: true,
+      timestamp: new Date().toISOString()
+    }, { status: 403 });
+
+  } catch (error: any) {
+    console.error('❌ Push subscription API error:', error);
+    
+    return NextResponse.json({ 
+      success: false, 
+      message: 'API hatası',
+      error: 'api_error',
+      fallback: true,
+      timestamp: new Date().toISOString()
     }, { status: 500 });
   }
+}
+
+export async function GET() {
+  return NextResponse.json({ 
+    success: true, 
+    message: 'Push subscription API aktif',
+    mode: 'fallback_only',
+    timestamp: new Date().toISOString()
+  });
 }

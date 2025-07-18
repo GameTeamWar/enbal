@@ -1,127 +1,50 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper function - Admin kontrolü
-    function isAdmin() {
-      return request.auth != null && 
+    // Users collection - kullanıcılar kendi verilerini okuyup güncelleyebilir
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Admin'ler tüm kullanıcıları görebilir
+      allow read: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
     
-    // Helper function - Authenticated user kontrolü
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    // Helper function - Kullanıcının kendi verisi mi kontrolü
-    function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Users collection
-    match /users/{userId} {
-      // Herkes telefon numarası ile kullanıcı arayabilir (şifre sıfırlama için)
-      allow read: if true;
-      
-      // Kullanıcı kendi verisini okuyup güncelleyebilir
-      allow write: if isOwner(userId);
-      
-      // Admin tüm kullanıcıları yönetebilir
-      allow read, write, delete: if isAdmin();
-    }
-    
-    // Quotes collection
+    // Quotes collection - kullanıcılar kendi tekliflerini görebilir, admin'ler hepsini
     match /quotes/{quoteId} {
-      // Herkes teklif oluşturabilir (misafir dahil)
-      allow create: if true;
-      
-      // Kullanıcı kendi tekliflerini okuyabilir
-      allow read: if isAuthenticated() && 
+      allow read, create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
         (resource.data.userId == request.auth.uid || 
-         resource.data.userId == null);
-      
-      // Kullanıcı kendi tekliflerini güncelleyebilir (ödeme bilgileri için)
-      allow update: if isAuthenticated() && 
-        resource.data.userId == request.auth.uid &&
-        // Sadece belirli alanları güncelleyebilir
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'customerStatus', 'customerRejectionReason', 'customerResponseDate', 
-          'paymentInfo', 'awaitingProcessing'
-        ]);
-      
-      // Admin tüm tekliflere tam erişim
-      allow read, write, delete: if isAdmin();
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
     
-    // Notifications collection
+    // Notifications collection - kullanıcılar kendi bildirimlerini görebilir
     match /notifications/{notificationId} {
-      // Kullanıcı kendi bildirimlerini okuyabilir
-      allow read: if isAuthenticated() && 
-        resource.data.userId == request.auth.uid;
-      
-      // Kullanıcı kendi bildirimlerini güncelleyebilir (read durumu için)
-      allow update: if isAuthenticated() && 
-        resource.data.userId == request.auth.uid &&
-        // Sadece read ve readAt alanlarını güncelleyebilir
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']);
-      
-      // Admin ve sistem bildirim oluşturabilir ve yönetebilir
-      allow create, read, write, delete: if isAdmin();
-      
-      // API üzerinden bildirim oluşturma (server-side için)
-      // Not: Bu production'da güvenlik token'ı ile korunmalı
-      allow create: if true;
+      allow read: if request.auth != null && 
+        (resource.data.userId == request.auth.uid ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && 
+        (resource.data.userId == request.auth.uid ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
     
-    // Password Reset Requests collection
+    // Password reset requests
     match /passwordResetRequests/{requestId} {
-      // Herkes şifre sıfırlama talebi oluşturabilir
-      allow create: if true;
-      
-      // Admin tüm talepleri görebilir ve yönetebilir
-      allow read, write, delete: if isAdmin();
+      allow read, create: if request.auth != null;
+      allow update: if request.auth != null && 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
     
-    // ✅ YENİ: Social Media collection
-    match /socialMedia/{linkId} {
-      // Herkes sosyal medya linklerini okuyabilir (Footer için)
-      allow read: if true;
-      
-      // Sadece admin sosyal medya linklerini yönetebilir
-      allow create, update, delete: if isAdmin();
-    }
-    
-    // Test collection (Firebase bağlantı testi için)
-    match /test/{document=**} {
-      allow read, write: if isAuthenticated();
-      allow delete: if isAdmin();
-    }
-    
-    // Gelecekte eklenebilecek collection'lar için hazırlık
-    
-    // Insurance Companies collection (sigorta şirketleri)
-    match /companies/{companyId} {
-      allow read: if true; // Herkes görebilir
-      allow write, delete: if isAdmin();
-    }
-    
-    // System Settings collection
-    match /settings/{settingId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    // Activity Logs collection (sistem logları)
-    match /logs/{logId} {
-      allow read: if isAdmin();
-      allow create: if isAuthenticated(); // Sistem logları
-      allow write, delete: if false; // Loglar değiştirilemez
-    }
-    
-    // Diğer tüm collection'lar - Varsayılan olarak erişim yok
-    match /{document=**} {
-      allow read, write: if false;
+    // Social media posts - admin'ler için
+    match /socialMediaPosts/{postId} {
+      allow read, write: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
   }
 }
