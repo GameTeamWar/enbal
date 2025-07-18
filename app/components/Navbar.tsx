@@ -325,10 +325,10 @@ export default function Navbar() {
                     <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border z-10">
                       <div className="p-4 border-b">
                         <div className="flex justify-between items-center">
-                          <h3 className="font-semibold text-gray-800">
-                            Bildirimler {unreadCount > 0 && (
-                              <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full ml-2">
-                                {unreadCount} yeni
+                          <h3 className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full ml-1">
+                             {unreadCount}  {unreadCount > 0 && (
+                              <span className="font-semibold text-gray-800">
+                               Yeni Bildirim
                               </span>
                             )}
                           </h3>
@@ -543,37 +543,17 @@ export default function Navbar() {
               </button>
             ) : (
               <>
-                <div className="flex items-center space-x-2 mb-2">
-                  {user.photoURL ? (
-                    <div className="relative w-8 h-8 rounded-full overflow-hidden">
-                      <Image
-                        src={user.photoURL}
-                        alt="Profile"
-                        width={32}
-                        height={32}
-                        className="object-cover rounded-full"
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                      <span className="text-gray-500 text-sm font-semibold">
-                        {user.name && user.name.charAt(0)}
-                      </span>
-                    </div>
-                  )}
-                  <span className="font-medium text-gray-700">{user.name} {user.surname}</span>
-                  {unreadCount > 0 && (
-                    <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                      {unreadCount}
-                    </span>
-                  )}
-                </div>
                 <Link
                   href="/profile"
                   className="block text-gray-700 hover:text-purple-600"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Profil
+                  {unreadCount > 0 && (
+                    <span className="ml-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 inline-flex items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  )}
                 </Link>
                 <Link
                   href="/my-quotes"

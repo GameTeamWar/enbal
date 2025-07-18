@@ -1,8 +1,8 @@
 // app/layout.tsx - SEO Optimized Version with Bottom-Right Toast
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import './globals.css'
 import { Toaster } from 'react-hot-toast'
+import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -86,9 +86,14 @@ export const metadata: Metadata = {
     images: ['/twitter-image.jpg'],
   },
   icons: {
-    icon: '/favicon.ico',
-    shortcut: '/favicon-16x16.png',
-    apple: '/apple-touch-icon.png',
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
   manifest: '/site.webmanifest',
   alternates: {
@@ -109,6 +114,12 @@ export default function RootLayout({
   return (
     <html lang="tr" suppressHydrationWarning>
       <head>
+        {/* Explicit favicon link to avoid conflicts */}
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" href="/favicon-16x16.png" sizes="16x16" type="image/png" />
+        <link rel="icon" href="/favicon-32x32.png" sizes="32x32" type="image/png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        
         {/* Additional SEO Meta Tags */}
         <meta name="theme-color" content="#6366f1" />
         <meta name="msapplication-TileColor" content="#6366f1" />
@@ -130,7 +141,7 @@ export default function RootLayout({
               "name": "Enbal Sigorta",
               "description": "Türkiye'nin önde gelen sigorta şirketleri ile çalışan güvenilir sigorta acentesi",
               "url": "https://enbalsigorta.com",
-              "logo": "https://enbalsigorta.com/logo.png",
+              "logo": "https://enbalsigorta.com/logos/logo.png",
               "image": "https://enbalsigorta.com/og-image.jpg",
               "telephone": ["+905354979353", "+903246130300"],
               "email": "info@enbalsigorta.com",

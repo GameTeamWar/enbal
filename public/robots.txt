@@ -1,0 +1,40 @@
+# Enbal Sigorta - robots.txt
+User-agent: *
+Allow: /
+
+# Ana sayfalar - tam erişim
+Allow: /
+Allow: /trafik-sigortasi
+Allow: /kasko-sigortasi
+Allow: /konut-sigortasi
+Allow: /dask
+Allow: /yangin-sigortasi
+Allow: /nakliye-sigortasi
+
+# Lokasyon sayfaları
+Allow: /adana-sigorta
+Allow: /tarsus-sigorta
+Allow: /mersin-sigorta
+Allow: /istanbul-sigorta
+Allow: /ankara-sigorta
+
+# Kullanıcı sayfaları - kayıtlı kullanıcılar için
+Disallow: /admin
+Disallow: /profile
+Disallow: /my-quotes
+Disallow: /api/
+
+# Static dosyalar - izin ver
+Allow: /favicon.ico
+Allow: /site.webmanifest
+Allow: /logos/
+Allow: /_next/static/
+
+# Firebase dosyalar
+Allow: /firebase-messaging-sw.js
+
+# Sitemap
+Sitemap: https://enbalsigorta.com/sitemap.xml
+
+# Crawl delay (isteğe bağlı)
+Crawl-delay: 1

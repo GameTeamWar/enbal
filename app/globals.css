@@ -140,3 +140,128 @@ input:-moz-autofill:focus {
     max-width: 100% !important;
   }
 }
+
+/* ✅ 404 Page Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bounce {
+  0%, 20%, 53%, 80%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  40%, 43% {
+    transform: translate3d(0, -30px, 0);
+  }
+  70% {
+    transform: translate3d(0, -15px, 0);
+  }
+  90% {
+    transform: translate3d(0, -4px, 0);
+  }
+}
+
+.error-animation {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.bounce-animation {
+  animation: bounce 2s infinite;
+}
+
+/* 404 page gradient text effect */
+.gradient-text {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 404 page hover effects */
+.hover-scale {
+  transition: transform 0.2s ease-in-out;
+}
+
+.hover-scale:hover {
+  transform: scale(1.05);
+}
+
+/* Loading spinner for redirect */
+.redirect-spinner {
+  border: 3px solid #f3f4f6;
+  border-top: 3px solid #8b5cf6;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Responsive 404 text */
+@media (max-width: 768px) {
+  .error-code {
+    font-size: 6rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .error-code {
+    font-size: 4rem;
+  }
+}
+
+/* ✅ PWA Install Banner Styles */
+.pwa-install-banner {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+}
+
+.pwa-install-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.5);
+}
+
+/* PWA banner animasyonu */
+@keyframes pwa-slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.pwa-banner-enter {
+  animation: pwa-slide-up 0.5s ease-out;
+}
+
+/* Mobilde daha iyi görünüm */
+@media (max-width: 640px) {
+  .pwa-install-banner {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+  }
+}
+
+/* Standalone mode detection */
+@media (display-mode: standalone) {
+  .pwa-install-banner {
+    display: none !important;
+  }
+}

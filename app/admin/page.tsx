@@ -543,114 +543,121 @@ export default function Admin() {
       <Navbar />
       <div className="min-h-screen bg-gray-50 py-12 px-4 pt-24">
         <div className="max-w-7xl mx-auto">
-          <div className="bg-white rounded-2xl shadow-xl p-8">
-            <div className="flex justify-between items-center mb-8">
-              <div className="flex items-center space-x-4">
-                <h1 className="text-3xl font-bold text-gray-800">Danışman Paneli</h1>
-                <div className="flex space-x-3">
-                  {/* ✅ Yeni Teklifler - Sadece pending ve aktif olanlar */}
-                  {newQuotesCount > 0 && (
-                    <div className="flex items-center space-x-2 bg-red-100 text-red-800 px-3 py-1 rounded-full">
-                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                      <span className="text-sm font-medium">{newQuotesCount} yeni teklif</span>
-                    </div>
-                  )}
+          <div className="bg-white rounded-2xl shadow-xl p-4 md:p-8">
+            {/* ✅ Mobile-responsive header */}
+            <div className="space-y-4 mb-8">
+              {/* Title and user greeting row */}
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start space-y-3 sm:space-y-0">
+                <div>
+                  <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Danışman Paneli</h1>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+                  <button
+                    onClick={() => setAudioEnabled(!audioEnabled)}
+                    className={`p-2 rounded-lg transition self-start sm:self-auto ${audioEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
+                    title={audioEnabled ? 'Bildirim sesini kapat' : 'Bildirim sesini aç'}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {audioEnabled ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9v6a3 3 0 11-6 0V9a3 3 0 116 0z" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                      )}
+                    </svg>
+                  </button>
                   
-                  {/* ✅ Kart Bilgisi Bekleyen - Sadece aktif olanlar */}
-                  {paidQuotesCount > 0 && (
-                    <div className="flex items-center space-x-2 bg-orange-100 text-orange-800 px-3 py-1 rounded-full">
-                      <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
-                      <span className="text-sm font-medium">{paidQuotesCount} kart bilgisi bekliyor</span>
-                    </div>
-                  )}
-                  
-                  {/* ✅ Şifre Talepleri */}
-                  {pendingPasswordResets > 0 && (
-                    <div className="flex items-center space-x-2 bg-purple-100 text-purple-800 px-3 py-1 rounded-full">
-                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
-                      <span className="text-sm font-medium">{pendingPasswordResets} şifre talebi</span>
-                    </div>
-                  )}
-                  
-                  {/* ✅ Toplam Aktif Teklifler - Bilgi amaçlı */}
-                  <div className="flex items-center space-x-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
-                    <span className="text-sm font-medium">Toplam: {totalActiveQuotes} aktif</span>
+                  <div className="text-sm text-gray-600">
+                    Hoş geldin, <span className="font-medium">{currentUser?.name} {currentUser?.surname}</span>
                   </div>
-                  
-                  {/* ✅ İptal Edilmiş Teklifler - Eğer varsa göster */}
-                  {cancelledQuotesCount > 0 && (
-                    <div className="flex items-center space-x-2 bg-gray-100 text-gray-700 px-3 py-1 rounded-full">
-                      <span className="text-sm font-medium">{cancelledQuotesCount} iptal</span>
-                    </div>
-                  )}
                 </div>
               </div>
-              
-              <div className="flex items-center space-x-4">
-                <button
-                  onClick={() => setAudioEnabled(!audioEnabled)}
-                  className={`p-2 rounded-lg transition ${audioEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
-                  title={audioEnabled ? 'Bildirim sesini kapat' : 'Bildirim sesini aç'}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {audioEnabled ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9v6a3 3 0 11-6 0V9a3 3 0 116 0z" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                    )}
-                  </svg>
-                </button>
+
+              {/* Status badges - mobile responsive grid */}
+              <div className="flex flex-wrap gap-2">
+                {/* ✅ Yeni Teklifler - Sadece pending ve aktif olanlar */}
+                {newQuotesCount > 0 && (
+                  <div className="flex items-center space-x-2 bg-red-100 text-red-800 px-3 py-1 rounded-full">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm font-medium">{newQuotesCount} yeni teklif</span>
+                  </div>
+                )}
                 
-                <div className="text-sm text-gray-600">
-                  Hoş geldin, <span className="font-medium">{currentUser?.name} {currentUser?.surname}</span>
+                {/* ✅ Kart Bilgisi Bekleyen - Sadece aktif olanlar */}
+                {paidQuotesCount > 0 && (
+                  <div className="flex items-center space-x-2 bg-orange-100 text-orange-800 px-3 py-1 rounded-full">
+                    <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm font-medium">{paidQuotesCount} kart bilgisi bekliyor</span>
+                  </div>
+                )}
+                
+                {/* ✅ Şifre Talepleri */}
+                {pendingPasswordResets > 0 && (
+                  <div className="flex items-center space-x-2 bg-purple-100 text-purple-800 px-3 py-1 rounded-full">
+                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm font-medium">{pendingPasswordResets} şifre talebi</span>
+                  </div>
+                )}
+                
+                {/* ✅ Toplam Aktif Teklifler - Bilgi amaçlı */}
+                <div className="flex items-center space-x-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
+                  <span className="text-sm font-medium">Toplam: {totalActiveQuotes} aktif</span>
                 </div>
+                
+                {/* ✅ İptal Edilmiş Teklifler - Eğer varsa göster */}
+                {cancelledQuotesCount > 0 && (
+                  <div className="flex items-center space-x-2 bg-gray-100 text-gray-700 px-3 py-1 rounded-full">
+                    <span className="text-sm font-medium">{cancelledQuotesCount} iptal</span>
+                  </div>
+                )}
               </div>
             </div>
 
+            {/* ✅ Mobile-responsive tab navigation */}
             <div className="mb-8">
-              <div className="flex space-x-4 border-b">
+              <div className="flex space-x-1 md:space-x-4 border-b overflow-x-auto scrollbar-hide">
                 <button
                   onClick={() => setActiveTab('quotes')}
-                  className={`pb-4 px-4 relative ${activeTab === 'quotes' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-600'}`}
+                  className={`pb-4 px-2 md:px-4 relative whitespace-nowrap ${activeTab === 'quotes' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-600'}`}
                 >
-                  Teklif Talepleri
+                  <span className="text-sm md:text-base">Teklif Talepleri</span>
                   {/* ✅ Sadece aktif teklifler için rozet */}
                   {(newQuotesCount + paidQuotesCount) > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    <span className="absolute top-1 -right-3 bg-red-500 text-white text-xs rounded-full w-5 h-3 flex items-center justify-center">
                       {newQuotesCount + paidQuotesCount}
                     </span>
                   )}
                 </button>
                 <button
                   onClick={() => setActiveTab('passwordResets')}
-                  className={`pb-4 px-4 relative ${activeTab === 'passwordResets' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-600'}`}
+                  className={`pb-4 px-2 md:px-4 relative whitespace-nowrap ${activeTab === 'passwordResets' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-600'}`}
                 >
-                  Şifre Talepleri
+                  <span className="text-sm md:text-base">Şifre Talepleri</span>
                   {pendingPasswordResets > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-purple-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    <span className="absolute top-1 -right-3 bg-black-500 text-white text-xs rounded-full w-5 h-3flex items-center justify-center">
                       {pendingPasswordResets}
                     </span>
                   )}
                 </button>
                 <button
                   onClick={() => setActiveTab('users')}
-                  className={`pb-4 px-4 relative ${activeTab === 'users' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-600'}`}
+                  className={`pb-4 px-2 md:px-4 relative whitespace-nowrap ${activeTab === 'users' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-600'}`}
                 >
-                  Kullanıcılar
-                  <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  <span className="text-sm md:text-base">Kullanıcılar</span>
+                  <span className="absolute top-1 -right-3 bg-blue-500 text-white text-xs rounded-full w-5 h-3 flex items-center justify-center">
                     {users.length}
                   </span>
                 </button>
                 {/* ✅ YENİ: Sosyal Medya Tab */}
                 <button
                   onClick={() => setActiveTab('socialMedia')}
-                  className={`pb-4 px-4 relative ${activeTab === 'socialMedia' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-600'}`}
+                  className={`pb-4 px-2 md:px-4 relative whitespace-nowrap ${activeTab === 'socialMedia' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-600'}`}
                 >
-                  <div className="flex items-center space-x-2">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <div className="flex items-center space-x-1 md:space-x-2">
+                    <svg className="w-3 h-3 md:w-4 md:h-4" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2h-2.22l.123.489.804.804A1 1 0 0113 18H7a1 1 0 01-.707-1.707l.804-.804L7.22 15H5a2 2 0 01-2-2V5zm5.771 7H5V5h10v7H8.771z" clipRule="evenodd" />
                     </svg>
-                    <span>Sosyal Medya</span>
+                    <span className="text-sm md:text-base">Sosyal Medya</span>
                   </div>
                 </button>
               </div>
