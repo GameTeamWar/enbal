@@ -13,6 +13,7 @@ import ResponseModal from '@/app/components/admin/ResponseModal';
 import UploadModal from '@/app/components/admin/UploadModal';
 import UsersComponent from '@/app/components/admin/UsersComponent';
 import { SocialMediaManagement } from '@/app/components/admin/SocialMediaManagement';
+import DeleteConfirmationModal from '@/app/components/admin/DeleteConfirmationModal';
 
 export default function Admin() {
   // Auth Guard - Sadece admin rolündeki kullanıcılar erişebilir
@@ -30,6 +31,7 @@ export default function Admin() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showResponseModal, setShowResponseModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   
   // Form states
   const [responseData, setResponseData] = useState({
@@ -432,14 +434,20 @@ export default function Admin() {
   };
 
   const deleteQuote = async (quote: any) => {
-    if (confirm('Bu teklifi kalıcı olarak silmek istediğinizden emin misiniz?')) {
-      try {
-        await deleteDoc(doc(db, 'quotes', quote.id));
-        toast.success('Teklif silindi!');
-      } catch (error) {
-        console.error('Silme hatası:', error);
-        toast.error('Teklif silinirken hata oluştu!');
-      }
+    setSelectedQuote(quote);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteQuote = async () => {
+    if (!selectedQuote) return;
+    
+    try {
+      await deleteDoc(doc(db, 'quotes', selectedQuote.id));
+      toast.success(`Teklif kalıcı olarak silindi! Müşteri: ${selectedQuote.name} (${selectedQuote.phone})`);
+      setSelectedQuote(null);
+    } catch (error) {
+      console.error('Silme hatası:', error);
+      toast.error('Teklif silinirken hata oluştu!');
     }
   };
 
@@ -996,6 +1004,7 @@ export default function Admin() {
           onQuoteResponse={handleQuoteResponse}
           onDocumentUpload={handleDocumentUpload}
           onRejectQuote={rejectQuote}
+          onDeleteQuote={deleteQuote}
           getStatusBadge={getStatusBadge}
           copyToClipboard={copyToClipboard}
         />
@@ -1022,6 +1031,16 @@ export default function Admin() {
           }}
           onUpload={uploadDocument}
           onFileSelect={setUploadFile}
+        />
+
+        <DeleteConfirmationModal
+          isOpen={showDeleteModal}
+          quote={selectedQuote}
+          onClose={() => {
+            setShowDeleteModal(false);
+            setSelectedQuote(null);
+          }}
+          onConfirm={confirmDeleteQuote}
         />
       </div>
     </>
