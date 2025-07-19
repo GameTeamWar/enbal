@@ -144,7 +144,61 @@ export default function Navbar() {
     }
   };
 
+  // ✅ YENİ: Bildirim sesi çalma fonksiyonu
+  const playNotificationSound = () => {
+    try {
+      console.log('🔊 Navbar notification sound playing...');
+      
+      // Vibration
+      if ('vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200]);
+      }
+      
+      // HTML5 Audio
+      const audio = new Audio();
+      audio.volume = 0.7;
+      
+      // Base64 encoded notification sound
+      const notificationSound = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmUSBTN4yO/Yijci';
+      
+      audio.src = notificationSound;
+      audio.play().then(() => {
+        console.log('✅ Navbar notification sound played');
+      }).catch((error) => {
+        console.log('⚠️ Navbar sound error:', error.message);
+        
+        // Fallback: AudioContext
+        try {
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const oscillator = audioContext.createOscillator();
+          const gainNode = audioContext.createGain();
+          
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+          
+          oscillator.frequency.value = 800;
+          oscillator.type = 'sine';
+          gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+          
+          oscillator.start();
+          oscillator.stop(audioContext.currentTime + 0.3);
+          
+          console.log('✅ Fallback sound played');
+        } catch (fallbackError) {
+          console.log('❌ Fallback sound failed:', fallbackError);
+        }
+      });
+      
+    } catch (error) {
+      console.error('Notification sound error:', error);
+    }
+  };
+
   const showBrowserNotification = (notification: Notification) => {
+    // ✅ ÖNCE SES ÇAL
+    playNotificationSound();
+    
     // Browser notification göster
     if ('Notification' in window && Notification.permission === 'granted') {
       try {

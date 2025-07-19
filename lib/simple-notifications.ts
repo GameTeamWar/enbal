@@ -505,83 +505,132 @@ export class SimpleBrowserNotifications {
     }
   }
 
-  // ✅ Gelişmiş notification sesi - Mobil ve masaüstü uyumlu
+  // ✅ Gelişmiş notification sesi - TAMAMEN YENİDEN YAZILDI
   private playAdvancedNotificationSound() {
     try {
-      // Mobil cihazlarda vibration
+      console.log('🔊 Notification sound starting...');
+      
+      // 1. Vibration (mobil)
       if ('vibrate' in navigator) {
         navigator.vibrate([200, 100, 200, 100, 200]);
       }
 
-      // Ses çalma
-      if (typeof window !== 'undefined' && 'AudioContext' in window) {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        
-        // Çift tonlu notification sesi - mobil uyumlu
-        const oscillator1 = audioContext.createOscillator();
-        const oscillator2 = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator1.connect(gainNode);
-        oscillator2.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        // İlk ton - daha yumuşak
-        oscillator1.frequency.value = 880;
-        oscillator1.type = 'sine';
-        
-        // İkinci ton - harmonik
-        oscillator2.frequency.value = 1100;
-        oscillator2.type = 'sine';
-        
-        // Ses seviyesi - mobilde daha düşük
-        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const volume = isMobile ? 0.05 : 0.1;
-        
-        gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
-        
-        // Sesi başlat ve durdur
-        oscillator1.start(audioContext.currentTime);
-        oscillator1.stop(audioContext.currentTime + 0.2);
-        
-        oscillator2.start(audioContext.currentTime + 0.15);
-        oscillator2.stop(audioContext.currentTime + 0.35);
-        
-        console.log('🔊 Enhanced notification sesi çalındı');
-      }
+      // 2. HTML5 Audio - Birincil yöntem
+      this.playSystemSound();
+      
+      // 3. AudioContext - Yedek yöntem
+      setTimeout(() => {
+        this.playBeepSound();
+      }, 100);
+      
     } catch (error: any) {
       console.log('Ses çalma hatası (normal):', error.message);
     }
   }
 
-  // Bildirimi okundu olarak işaretle
-  private async markAsRead(notificationId: string) {
+  // ✅ Sistem sesi çal
+  private playSystemSound() {
     try {
-      await updateDoc(doc(db, 'notifications', notificationId), {
-        read: true,
-        readAt: new Date(),
-        shownInBrowser: true // Browser'da gösterildi işareti
-      });
-      console.log('📖 Notification marked as read:', notificationId);
+      // Multiple attempt strategy
+      const audio = new Audio();
+      audio.volume = 0.8;
+      audio.preload = 'auto';
+      
+      // Try multiple sound sources
+      const sounds = [
+        'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmUSBTN4yO/Yijci',
+        '/notification.mp3',
+        '/nsound.mp3'
+      ];
+      
+      let soundPlayed = false;
+      
+      for (const soundSrc of sounds) {
+        if (soundPlayed) break;
+        
+        try {
+          audio.src = soundSrc;
+          const playPromise = audio.play();
+          
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                soundPlayed = true;
+                console.log('✅ System sound played:', soundSrc);
+              })
+              .catch((error) => {
+                console.log(`⚠️ Sound failed (${soundSrc}):`, error.message);
+              });
+          }
+          
+          if (soundPlayed) break;
+        } catch (error) {
+          console.log(`❌ Sound source error: ${soundSrc}`);
+          continue;
+        }
+      }
     } catch (error) {
-      console.error('Mark as read error:', error);
+      console.error('System sound error:', error);
     }
   }
 
-  // Test notification - GÜNCELLEME
+  // ✅ Beep sesi oluştur
+  private playBeepSound() {
+    try {
+      if (typeof window === 'undefined' || !('AudioContext' in window)) return;
+      
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // Resume context if suspended
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      
+      // Create notification beep
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      // Set frequency and type
+      oscillator.frequency.value = 800; // 800 Hz notification tone
+      oscillator.type = 'sine';
+      
+      // Volume control
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      // Play beep
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+      
+      console.log('✅ Beep sound generated');
+    } catch (error) {
+      console.error('Beep sound error:', error);
+    }
+  }
+
+  // Test notification - SES + YAZILI BİLDİRİM
   showTestNotification() {
     const testId = `test-${Date.now()}`;
-    this.showNotification({
-      title: '🎉 Test Bildirimi',
-      body: 'Enhanced notification sistemi mükemmel çalışıyor! Tarayıcı kapalı olsa bile alabilirsiniz 🚀',
-      icon: '/favicon.ico',
-      tag: testId,
-      data: {
-        url: '/my-quotes',
-        type: 'test'
-      }
-    });
+    
+    // 1. Önce sesi çal
+    this.playAdvancedNotificationSound();
+    
+    // 2. Sonra bildirimi göster
+    setTimeout(() => {
+      this.showNotification({
+        title: '🎉 Test Bildirimi - Ses + Yazı',
+        body: 'Enhanced notification sistemi mükemmel çalışıyor! Hem ses hem yazılı bildirim alabilirsiniz 🚀',
+        icon: '/favicon.ico',
+        tag: testId,
+        data: {
+          url: '/my-quotes',
+          type: 'test'
+        }
+      });
+    }, 200);
   }
 
   // Sistem durumunu kontrol et - GÜNCELLEME
@@ -624,6 +673,21 @@ export class SimpleBrowserNotifications {
       hasPushSubscription,
       pushSubscriptionSource
     };
+  }
+
+  // ✅ Mark notification as read
+  private async markAsRead(notificationId: string): Promise<void> {
+    if (!notificationId) return;
+    
+    try {
+      await updateDoc(doc(db, 'notifications', notificationId), {
+        read: true,
+        readAt: new Date()
+      });
+      console.log('✅ Notification marked as read:', notificationId);
+    } catch (error) {
+      console.error('❌ Mark as read error:', error);
+    }
   }
 
   // ✅ Debug bilgileri

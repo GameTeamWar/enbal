@@ -85,34 +85,99 @@ export default function Admin() {
     saveAudioSettings(newSettings);
   }, [audioSettings, saveAudioSettings]);
 
-  // ✅ Play notification sound function
+  // ✅ Play notification sound function - İYİLEŞTİRİLDİ
   const playNotificationSound = () => {
     if (!audioSettings.enabled) return;
     
     try {
-      const audio = new Audio('/notification.mp3');
+      console.log('🔊 Admin notification sound starting...');
+      
+      // 1. Vibration
+      if ('vibrate' in navigator) {
+        navigator.vibrate([300, 150, 300, 150, 300]);
+      }
+      
+      // 2. HTML5 Audio
+      const audio = new Audio();
       audio.volume = audioSettings.volume;
+      
+      // Try multiple sound sources
+      const soundSources = [
+        '/notification.mp3',
+        'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmUSBTN4yO/Yijci'
+      ];
       
       let playCount = 0;
       const maxPlays = audioSettings.repeatCount;
       
       const playNext = () => {
         if (playCount < maxPlays) {
-          audio.currentTime = 0;
-          audio.play().then(() => {
-            playCount++;
-            if (playCount < maxPlays) {
-              setTimeout(playNext, 1000); // 1 second delay between repeats
+          for (const src of soundSources) {
+            try {
+              audio.src = src;
+              const playPromise = audio.play();
+              
+              if (playPromise) {
+                playPromise.then(() => {
+                  playCount++;
+                  console.log(`✅ Admin sound played ${playCount}/${maxPlays}`);
+                  
+                  if (playCount < maxPlays) {
+                    setTimeout(playNext, 800); // 800ms delay between repeats
+                  }
+                }).catch((error) => {
+                  console.log(`⚠️ Audio play failed (${src}):`, error.message);
+                  // Try AudioContext fallback
+                  playAudioContextFallback();
+                });
+              }
+              break; // Success, exit loop
+            } catch (error) {
+              console.log(`❌ Audio source error: ${src}`);
+              continue; // Try next source
             }
-          }).catch((error) => {
-            console.error('Audio play error:', error);
-          });
+          }
         }
       };
       
       playNext();
+      
     } catch (error) {
-      console.error('Notification sound error:', error);
+      console.error('Admin notification sound error:', error);
+    }
+  };
+
+  // ✅ AudioContext Fallback - this kaldırıldı
+  const playAudioContextFallback = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      
+      for (let i = 0; i < audioSettings.repeatCount; i++) {
+        setTimeout(() => {
+          const oscillator = audioContext.createOscillator();
+          const gainNode = audioContext.createGain();
+          
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+          
+          oscillator.frequency.value = 880; // A5 note
+          oscillator.type = 'sine';
+          
+          gainNode.gain.setValueAtTime(audioSettings.volume, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+          
+          oscillator.start();
+          oscillator.stop(audioContext.currentTime + 0.4);
+          
+          console.log(`✅ AudioContext fallback played ${i + 1}/${audioSettings.repeatCount}`);
+        }, i * 800);
+      }
+    } catch (error) {
+      console.error('AudioContext fallback error:', error);
     }
   };
 
