@@ -108,50 +108,9 @@ export default function MyQuotes() {
     }
   };
 
-  const acceptQuote = async (quote: any) => {
-    console.log('🎯 acceptQuote çağrıldı:', {
-      quoteId: quote.id,
-      price: quote.price,
-      maxInstallments: quote.maxInstallments,
-      status: quote.status
-    });
-    
-    if (!quote.price) {
-      toast.error('Bu teklif için fiyat bilgisi bulunmuyor!');
-      return;
-    }
-    
-    setSelectedQuote(quote);
-    setPaymentData({
-      cardNumber: '',
-      expiryDate: '',
-      cvv: '',
-      cardHolder: '',
-      installments: '1'
-    });
-    setShowPaymentModal(true);
-  };
-
-  const rejectQuote = async (quote: any) => {
-    const reason = prompt('Red nedeni (opsiyonel):');
-    
-    try {
-      await updateDoc(doc(db, 'quotes', quote.id), {
-        customerStatus: 'rejected',
-        customerRejectionReason: reason || 'Kullanıcı tarafından reddedildi',
-        customerResponseDate: new Date()
-      });
-
-      toast.success('Teklif reddedildi!');
-    } catch (error) {
-      toast.error('Bir hata oluştu!');
-      console.error(error);
-    }
-  };
-
   // Taksit seçenekleri oluşturma fonksiyonu
   const generateInstallmentOptions = (maxInstallments: number = 1) => {
-    console.log('🔍 generateInstallmentOptions çağrıldı:', { maxInstallments });
+    // console.log('🔍 generateInstallmentOptions çağrıldı:', { maxInstallments });
     
     const options = [];
     
@@ -160,7 +119,7 @@ export default function MyQuotes() {
     
     // maxInstallments kontrolü
     if (!maxInstallments || maxInstallments <= 1) {
-      console.log('⚠️ maxInstallments 1 veya undefined, sadece tek çekim döndürülüyor');
+      // console.log('⚠️ maxInstallments 1 veya undefined, sadece tek çekim döndürülüyor');
       return options;
     }
     
@@ -173,11 +132,11 @@ export default function MyQuotes() {
           value: installment.toString(), 
           label: `${installment} Taksit` 
         });
-        console.log(`✅ Taksit eklendi: ${installment}`);
+        // console.log(`✅ Taksit eklendi: ${installment}`);
       }
     }
     
-    console.log('📋 Final options:', options);
+    // console.log('📋 Final options:', options);
     return options;
   };
 
@@ -268,7 +227,7 @@ export default function MyQuotes() {
     }
 
     try {
-      console.log('API üzerinden dosya indirme başlıyor...');
+      // console.log('API üzerinden dosya indirme başlıyor...');
       const loadingToast = toast.loading('Belge hazırlanıyor...');
 
       // API route'u kullanarak indir
@@ -290,7 +249,7 @@ export default function MyQuotes() {
 
       // Blob olarak al
       const blob = await response.blob();
-      console.log('Blob alındı:', blob.size, 'bytes');
+      // console.log('Blob alındı:', blob.size, 'bytes');
 
       // Content-Disposition header'ından dosya adını al
       const contentDisposition = response.headers.get('content-disposition');
@@ -329,7 +288,7 @@ export default function MyQuotes() {
       console.error('API download hatası:', error);
       
       // Fallback: Direct link yöntemi
-      console.log('Fallback yöntemine geçiliyor...');
+      // console.log('Fallback yöntemine geçiliyor...');
       await downloadDocumentDirect(quote);
     }
   };
@@ -337,21 +296,21 @@ export default function MyQuotes() {
   // FALLBACK: Direct download yöntemi
   const downloadDocumentDirect = async (quote: any) => {
     try {
-      console.log('Direct download başlıyor...');
+      // console.log('Direct download başlıyor...');
       
       // Firebase Storage'dan fresh URL al
       if (quote.documentPath) {
-        console.log('Storage path ile fresh URL alınıyor:', quote.documentPath);
+        // console.log('Storage path ile fresh URL alınıyor:', quote.documentPath);
         const storageRef = ref(storage, quote.documentPath);
         const freshUrl = await getDownloadURL(storageRef);
-        console.log('Fresh URL alındı:', freshUrl);
+        // console.log('Fresh URL alındı:', freshUrl);
         
         // Yeni pencerede aç
         window.open(freshUrl, '_blank');
         toast.success('Belge yeni sekmede açıldı!');
       } else {
         // Mevcut URL ile dene
-        console.log('Mevcut URL ile deneniyor:', quote.documentUrl);
+        // console.log('Mevcut URL ile deneniyor:', quote.documentUrl);
         window.open(quote.documentUrl, '_blank');
         toast.success('Belge yeni sekmede açıldı!');
       }
@@ -373,6 +332,64 @@ export default function MyQuotes() {
         }
       }
     }
+  };
+
+  const acceptQuote = async (quote: any) => {
+    // console.log('🎯 acceptQuote çağrıldı:', {
+    //   quoteId: quote.id,
+    //   price: quote.price,
+    //   maxInstallments: quote.maxInstallments,
+    //   status: quote.status
+    // });
+    
+    if (!quote.price) {
+      toast.error('Bu teklif için fiyat bilgisi bulunmuyor!');
+      return;
+    }
+    
+    setSelectedQuote(quote);
+    setPaymentData({
+      cardNumber: '',
+      expiryDate: '',
+      cvv: '',
+      cardHolder: '',
+      installments: '1'
+    });
+    setShowPaymentModal(true);
+  };
+
+  const rejectQuote = async (quote: any) => {
+    const reason = prompt('Red nedeni (opsiyonel):');
+    
+    try {
+      await updateDoc(doc(db, 'quotes', quote.id), {
+        customerStatus: 'rejected',
+        customerRejectionReason: reason || 'Kullanıcı tarafından reddedildi',
+        customerResponseDate: new Date()
+      });
+
+      toast.success('Teklif reddedildi!');
+    } catch (error) {
+      toast.error('Bir hata oluştu!');
+      console.error(error);
+    }
+  };
+
+  // Modal içinde taksit değişimi
+  const handleInstallmentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    // console.log('🔄 Taksit değiştirildi:', e.target.value);
+    setPaymentData({...paymentData, installments: e.target.value});
+  };
+
+  // Option render
+  const renderInstallmentOption = (option: any) => {
+    // console.log('📝 Option render:', option);
+    return (
+      <option key={option.value} value={option.value}>
+        {option.label}
+        {option.value !== '1' && ` (${formatPrice(calculateInstallmentAmount(selectedQuote.price, option.value).toString())} × ${option.value})`}
+      </option>
+    );
   };
 
   const getStatusBadge = (quote: any) => {
@@ -464,7 +481,7 @@ export default function MyQuotes() {
                         <div>
                           <p className="font-medium text-red-800 flex items-center">
                             <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zm-8 8a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H3z" clipRule="evenodd" />
                             </svg>
                             {notification.title || 'Bildirim'}
                           </p>

@@ -1,7 +1,7 @@
 // lib/fcm.ts - Düzeltilmiş FCM Setup
 import { getToken, onMessage } from 'firebase/messaging';
 import { doc, updateDoc } from 'firebase/firestore';
-import { auth, db, getMessagingInstance } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 
 // Güncel VAPID key - Firebase Console'dan alınacak
 const vapidKey = 'O3z6guGvKPxlDyZTAriwuwYFqCGcSOubgJ6TR2FHF1k';
@@ -284,3 +284,23 @@ export const checkFCMSupport = async () => {
     return false;
   }
 };
+
+async function getMessagingInstance() {
+  try {
+    // Dynamic import to avoid SSR issues
+    const { getMessaging, isSupported } = await import('firebase/messaging');
+    
+    // Check if messaging is supported in this browser
+    const supported = await isSupported();
+    if (!supported) {
+      throw new Error('Messaging is not supported in this browser');
+    }
+    
+    // Get messaging instance
+    const messaging = getMessaging();
+    return messaging;
+  } catch (error) {
+    console.error('Failed to get messaging instance:', error);
+    throw error;
+  }
+}

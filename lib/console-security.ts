@@ -3,7 +3,7 @@
 export const initConsoleSecurityGuard = () => {
   // ✅ Sadece production ortamında çalışır
   if (process.env.NODE_ENV !== 'production') {
-    console.log('🔧 Development mode - Console security guard disabled');
+    // console.log('🔧 Development mode - Console security guard disabled');
     return;
   }
 
@@ -104,7 +104,7 @@ export const initConsoleSecurityGuard = () => {
   // ✅ Periyodik uyarı (her 5 dakikada bir)
   setInterval(showSecurityWarning, 5 * 60 * 1000);
 
-  console.log('🛡️ Console security guard initialized');
+  // console.log('🛡️ Console security guard initialized');
 };
 
 // ✅ DevTools açılma tespiti

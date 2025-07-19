@@ -92,7 +92,7 @@ export default function Admin() {
     if (!audioSettings.enabled) return;
     
     try {
-      console.log('🔊 Admin notification sound starting...');
+      // console.log('🔊 Admin notification sound starting...');
       
       // 1. Vibration
       if ('vibrate' in navigator) {
@@ -122,20 +122,20 @@ export default function Admin() {
               if (playPromise) {
                 playPromise.then(() => {
                   playCount++;
-                  console.log(`✅ Admin sound played ${playCount}/${maxPlays}`);
+                  // console.log(`✅ Admin sound played ${playCount}/${maxPlays}`);
                   
                   if (playCount < maxPlays) {
                     setTimeout(playNext, 800); // 800ms delay between repeats
                   }
                 }).catch((error) => {
-                  console.log(`⚠️ Audio play failed (${src}):`, error.message);
+                  // console.log(`⚠️ Audio play failed (${src}):`, error.message);
                   // Try AudioContext fallback
                   playAudioContextFallback();
                 });
               }
               break; // Success, exit loop
             } catch (error) {
-              console.log(`❌ Audio source error: ${src}`);
+              // console.log(`❌ Audio source error: ${src}`);
               continue; // Try next source
             }
           }
@@ -175,7 +175,7 @@ export default function Admin() {
           oscillator.start();
           oscillator.stop(audioContext.currentTime + 0.4);
           
-          console.log(`✅ AudioContext fallback played ${i + 1}/${audioSettings.repeatCount}`);
+          // console.log(`✅ AudioContext fallback played ${i + 1}/${audioSettings.repeatCount}`);
         }, i * 800);
       }
     } catch (error) {
@@ -187,7 +187,7 @@ export default function Admin() {
   useEffect(() => {
     if (!currentUser || !isAdmin) return;
 
-    console.log('🔄 Setting up real-time listeners...');
+    // console.log('🔄 Setting up real-time listeners...');
 
     // 1. Quotes listener
     const quotesQuery = query(collection(db, 'quotes'), orderBy('createdAt', 'desc'));
@@ -196,7 +196,7 @@ export default function Admin() {
         id: doc.id,
         ...doc.data()
       }));
-      console.log('📋 Quotes updated:', quotesData.length);
+      // console.log('📋 Quotes updated:', quotesData.length);
       
       // ✅ Check for new quotes to trigger notification - IMPROVED
       setQuotes(prevQuotes => {
@@ -205,7 +205,7 @@ export default function Admin() {
         
         // Only trigger notification if we have more quotes than before AND audio is enabled
         if (previousCount > 0 && newCount > previousCount && audioSettings.enabled) {
-          console.log('🔔 New quote detected, playing notification sound');
+          // console.log('🔔 New quote detected, playing notification sound');
           playNotificationSound();
         }
         
@@ -223,7 +223,7 @@ export default function Admin() {
         id: doc.id,
         ...doc.data()
       }));
-      console.log('👥 Users updated:', usersData.length);
+      // console.log('👥 Users updated:', usersData.length);
       setUsers(usersData);
     }, (error) => {
       console.error('❌ Users listener error:', error);
@@ -237,7 +237,7 @@ export default function Admin() {
         id: doc.id,
         ...doc.data()
       }));
-      console.log('🔐 Password resets updated:', requestsData.length);
+      // console.log('🔐 Password resets updated:', requestsData.length);
       setPasswordResetRequests(requestsData);
     }, (error) => {
       console.error('❌ Password resets listener error:', error);
@@ -246,7 +246,7 @@ export default function Admin() {
 
     // Cleanup function
     return () => {
-      console.log('🧹 Cleaning up listeners...');
+      // console.log('🧹 Cleaning up listeners...');
       unsubscribeQuotes();
       unsubscribeUsers();
       unsubscribePasswordResets();
@@ -362,7 +362,7 @@ export default function Admin() {
   // ✅ Kullanıcıya bildirim gönder fonksiyonu
   const sendNotificationToUser = async (userId: string, type: string, data: any) => {
     try {
-      console.log('📨 Kullanıcıya bildirim gönderiliyor:', { userId, type, data });
+      // console.log('📨 Kullanıcıya bildirim gönderiliyor:', { userId, type, data });
 
       let notificationTitle = '';
       let notificationMessage = '';
@@ -402,7 +402,7 @@ export default function Admin() {
         createdBy: currentUser?.uid || 'admin'
       });
 
-      console.log('✅ Bildirim Firestore\'a eklendi');
+      // console.log('✅ Bildirim Firestore\'a eklendi');
       return true;
     } catch (error) {
       console.error('❌ Kullanıcı bildirimi hatası:', error);
@@ -492,12 +492,12 @@ export default function Admin() {
   }
 
   try {
-    console.log('📤 Admin cevabı gönderiliyor:', {
-      quoteId: selectedQuote.id,
-      price: responseData.price,
-      maxInstallments: responseData.maxInstallments,
-      adminResponse: responseData.adminResponse.substring(0, 50) + '...'
-    });
+    // console.log('📤 Admin cevabı gönderiliyor:', {
+    //   quoteId: selectedQuote.id,
+    //   price: responseData.price,
+    //   maxInstallments: responseData.maxInstallments,
+    //   adminResponse: responseData.adminResponse.substring(0, 50) + '...'
+    // });
 
     const updateData: any = {
       status: 'responded',
@@ -515,18 +515,18 @@ export default function Admin() {
     // ✅ maxInstallments - En önemli kısım!
     const maxInstallments = responseData.maxInstallments || 1;
     updateData.maxInstallments = maxInstallments;
-    console.log('💾 maxInstallments kaydediliyor:', maxInstallments);
+    // console.log('💾 maxInstallments kaydediliyor:', maxInstallments);
 
     // Admin notları
     if (responseData.adminNotes) {
       updateData.adminNotes = responseData.adminNotes;
     }
 
-    console.log('🔍 Final updateData:', updateData);
+    // console.log('🔍 Final updateData:', updateData);
 
     await updateDoc(doc(db, 'quotes', selectedQuote.id), updateData);
     
-    console.log('✅ Firestore güncellendi');
+    // console.log('✅ Firestore güncellendi');
     
     if (selectedQuote.userId) {
       await sendNotificationToUser(selectedQuote.userId, 'quote_response', {
@@ -662,7 +662,7 @@ export default function Admin() {
 
   // ✅ Users refresh function - Real-time listener sayesinde otomatik
   const refreshUsers = () => {
-    console.log('🔄 Users refresh triggered (real-time listener handles this automatically)');
+    // console.log('🔄 Users refresh triggered (real-time listener handles this automatically)');
     toast.success('Kullanıcı listesi real-time güncellendi!');
   };
 

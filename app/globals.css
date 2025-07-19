@@ -20,6 +20,45 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* ✅ Next.js Error Handling - Prevent 404 chunk issues */
+.next-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+  text-align: center;
+}
+
+.chunk-load-error {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  padding: 16px;
+  border-radius: 8px;
+  margin: 16px 0;
+  font-size: 14px;
+}
+
+/* ✅ Loading states for better UX */
+.page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #f9fafb;
+}
+
+.loading-spinner {
+  border: 4px solid #f3f4f6;
+  border-top: 4px solid #8b5cf6;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+}
+
 /* Input ve form elementleri için metin rengini zorunlu olarak siyah yap */
 input[type="text"],
 input[type="email"],
@@ -329,4 +368,112 @@ input:-moz-autofill:focus {
     font-size: 10px;
     padding: 6px 8px;
   }
+}
+
+/* ✅ Better error boundary styles */
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.error-boundary h1 {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+
+.error-boundary p {
+  font-size: 1rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  max-width: 600px;
+}
+
+.error-boundary button {
+  background: #dc2626;
+  color: white;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.error-boundary button:hover {
+  background: #b91c1c;
+}
+
+/* ✅ Development mode indicators */
+.dev-mode-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #f59e0b;
+  color: white;
+  text-align: center;
+  padding: 4px 8px;
+  font-size: 12px;
+  z-index: 10000;
+  display: none;
+}
+
+/* Show only in development */
+@media screen {
+  .dev-mode-indicator {
+    display: block;
+  }
+}
+
+/* ✅ Enhanced chunk loading error handling */
+.chunk-load-failed {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  border: 2px solid #dc2626;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  text-align: center;
+  z-index: 10000;
+}
+
+.chunk-load-failed h3 {
+  color: #dc2626;
+  margin-bottom: 12px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.chunk-load-failed p {
+  color: #6b7280;
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.chunk-load-failed button {
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.chunk-load-failed button:hover {
+  background: #7c3aed;
 }
