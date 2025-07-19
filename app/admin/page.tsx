@@ -14,6 +14,7 @@ import UploadModal from '@/app/components/admin/UploadModal';
 import UsersComponent from '@/app/components/admin/UsersComponent';
 import { SocialMediaManagement } from '@/app/components/admin/SocialMediaManagement';
 import DeleteConfirmationModal from '@/app/components/admin/DeleteConfirmationModal';
+import RejectQuoteModal from '@/app/components/admin/RejectQuoteModal';
 
 export default function Admin() {
   // Auth Guard - Sadece admin rolündeki kullanıcılar erişebilir
@@ -33,7 +34,8 @@ export default function Admin() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showAudioSettingsModal, setShowAudioSettingsModal] = useState(false);
-  
+  const [showRejectModal, setShowRejectModal] = useState(false);
+
   // Form states
   const [responseData, setResponseData] = useState({
     adminResponse: '',
@@ -546,31 +548,38 @@ export default function Admin() {
 };
 
   const rejectQuote = async (quote: any) => {
-    const reason = prompt('Red nedeni (isteğe bağlı):');
+    setSelectedQuote(quote);
+    setShowRejectModal(true);
+  };
+
+  const confirmRejectQuote = async (reason: string) => {
+    if (!selectedQuote) return;
     
     try {
       const updateData: any = {
         status: 'rejected',
-        rejectionReason: reason || 'Danışman tarafından reddedildi',
+        rejectionReason: reason,
         rejectedBy: currentUser?.uid,
         rejectedAt: new Date(),
         updatedAt: new Date()
       };
 
-      await updateDoc(doc(db, 'quotes', quote.id), updateData);
+      await updateDoc(doc(db, 'quotes', selectedQuote.id), updateData);
       
-      if (quote.userId) {
-        await sendNotificationToUser(quote.userId, 'quote_rejected', {
-          quoteId: quote.id,
-          insuranceType: quote.insuranceType,
-          reason: reason || 'Danışman tarafından reddedildi'
+      if (selectedQuote.userId) {
+        await sendNotificationToUser(selectedQuote.userId, 'quote_rejected', {
+          quoteId: selectedQuote.id,
+          insuranceType: selectedQuote.insuranceType,
+          reason: reason
         });
       }
       
-      toast.success('Teklif reddedildi ve kullanıcı bilgilendirildi!');
+      toast.success('Teklif iptal edildi ve müşteri bilgilendirildi!');
+      setShowRejectModal(false);
+      setSelectedQuote(null);
     } catch (error) {
-      console.error('Reddetme hatası:', error);
-      toast.error('Teklif reddedilirken hata oluştu!');
+      console.error('İptal etme hatası:', error);
+      toast.error('Teklif iptal edilirken hata oluştu!');
     }
   };
 
@@ -1197,6 +1206,16 @@ export default function Admin() {
             setSelectedQuote(null);
           }}
           onConfirm={confirmDeleteQuote}
+        />
+
+        <RejectQuoteModal
+          isOpen={showRejectModal}
+          quote={selectedQuote}
+          onClose={() => {
+            setShowRejectModal(false);
+            setSelectedQuote(null);
+          }}
+          onConfirm={confirmRejectQuote}
         />
 
         {/* ✅ Audio Settings Modal */}
