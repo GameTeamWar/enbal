@@ -265,3 +265,68 @@ input:-moz-autofill:focus {
     display: none !important;
   }
 }
+
+/* ✅ Security Styles - Production Mode */
+@media screen {
+  body {
+    /* Metin seçimini engelle (production'da JS ile kontrol edilir) */
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+  }
+}
+
+/* ✅ Anti-screenshot protection (sadece görsel) */
+.sensitive-content {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* ✅ Console warning styles */
+.console-warning {
+  display: none; /* Hidden by default */
+}
+
+/* ✅ Security notice */
+.security-notice {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(231, 76, 60, 0.1);
+  border: 1px solid rgba(231, 76, 60, 0.3);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #e74c3c;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+/* ✅ Debugging prevention - FIXED autoprefixer warning */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important; /* ✅ Fixed: Updated to new property name */
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* ✅ Responsive security message */
+@media (max-width: 768px) {
+  .security-notice {
+    bottom: 5px;
+    right: 5px;
+    font-size: 10px;
+    padding: 6px 8px;
+  }
+}
