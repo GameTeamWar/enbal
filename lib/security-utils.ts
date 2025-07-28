@@ -71,7 +71,8 @@ export const hideSourceCode = () => {
   // Meta tag ekle
   const meta = document.createElement('meta');
   meta.name = 'robots';
-  meta.content = 'noindex, nofollow, noarchive, nosnippet, noimageindex';
+  meta.content = 'index, follow';
+
   document.head.appendChild(meta);
   
   // Telif hakkı bildirimi
