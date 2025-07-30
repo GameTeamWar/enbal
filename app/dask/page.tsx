@@ -6,11 +6,12 @@ import Footer from '../components/Footer'
 export const metadata: Metadata = {
   title: 'DASK - Zorunlu Deprem Sigortası | Hızlı İşlem - Enbal Sigorta',
   description: 'DASK (Zorunlu Deprem Sigortası) için hemen başvurun. Online DASK poliçesi, hızlı işlem, uygun fiyat. Tarsus Mersin DASK temsilcisi.',
-  keywords: ['DASK', 'deprem sigortası', 'zorunlu deprem sigortası', 'online dask', 'tarsus dask', 'mersin dask'],
+  keywords: ['DASK', 'deprem sigortası', 'zorunlu deprem sigortası', 'online dask', 'tarsus dask', 'mersin dask','enbal','en bal','en','sigorta','bal'],
   alternates: {
     canonical: 'https://enbalsigorta.com/dask',
   },
 }
+
 
 export default function DaskPage() {
   return (
@@ -28,9 +29,9 @@ export default function DaskPage() {
               uygun fiyatlarla evinizi deprem riskine karşı güvence altına alın.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-100 transition">
+              {/* <button className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-100 transition">
                 DASK Teklifi Al
-              </button>
+              </button>*/}
               <a href="tel:+905354979353" className="px-8 py-4 bg-transparent border-2 border-white text-white rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition">
                 0535 497 93 53
               </a>
@@ -38,7 +39,7 @@ export default function DaskPage() {
           </div>
         </section>
 
-        {/* Content Section */}
+         Content Section 
         <section className="py-16">
           <div className="container mx-auto px-4">
             <div className="max-w-4xl mx-auto">
@@ -110,9 +111,9 @@ export default function DaskPage() {
                   Tüm işlemlerinizi güvenle tamamlayın.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <button className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white rounded-lg font-semibold hover:opacity-90 transition">
+                 {/* <button className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white rounded-lg font-semibold hover:opacity-90 transition">
                     Online DASK Başvurusu
-                  </button>
+                  </button>*/}
                   <a href="tel:+905354979353" className="px-8 py-4 bg-gray-800 text-white rounded-lg font-semibold hover:bg-gray-700 transition">
                     0535 497 93 53
                   </a>

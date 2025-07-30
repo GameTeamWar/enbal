@@ -28,9 +28,9 @@ export default function KonutSigortasi() {
               Kapsamlı teminatlar, uygun fiyatlar, güvenilir hizmet.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="px-8 py-4 bg-white text-green-600 rounded-lg font-semibold hover:bg-gray-100 transition">
+              {/* <button className="px-8 py-4 bg-white text-green-600 rounded-lg font-semibold hover:bg-gray-100 transition">
                 Konut Sigortası Teklifi Al
-              </button>
+              </button>*/}
               <a href="tel:+905354979353" className="px-8 py-4 bg-transparent border-2 border-white text-white rounded-lg font-semibold hover:bg-white hover:text-green-600 transition">
                 0535 497 93 53
               </a>
@@ -38,7 +38,7 @@ export default function KonutSigortasi() {
           </div>
         </section>
 
-        {/* Content sections */}
+      Content sections 
         <section className="py-16">
           <div className="container mx-auto px-4">
             <div className="max-w-6xl mx-auto">

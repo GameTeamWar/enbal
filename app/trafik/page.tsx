@@ -35,9 +35,9 @@ export default function TrafikSigortasiPage() {
               uygun fiyatlarla aracınızı güvence altına alın.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-100 transition">
+            {/*  <button className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-100 transition">
                 Teklif Al
-              </button>
+              </button> */}   
               <a href="tel:+905354979353" className="px-8 py-4 bg-transparent border-2 border-white text-white rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition">
                 0535 497 93 53
               </a>
@@ -80,9 +80,9 @@ export default function TrafikSigortasiPage() {
                   En uygun fiyatları karşılaştırın.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <button className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white rounded-lg font-semibold hover:opacity-90 transition">
+                  {/* <button className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white rounded-lg font-semibold hover:opacity-90 transition">
                     Online Trafik Sigortası
-                  </button>
+                  </button> */}
                   <a href="tel:+905354979353" className="px-8 py-4 bg-gray-800 text-white rounded-lg font-semibold hover:bg-gray-700 transition">
                     0535 497 93 53
                   </a>
