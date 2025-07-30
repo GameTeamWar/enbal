@@ -16,7 +16,7 @@ const EMAIL_CONFIG = {
 };
 
 const ADMIN_EMAILS = [
-  process.env.ADMIN_EMAIL_1 || 'enbal50@gmail.com',
+  process.env.ADMIN_EMAIL_1 || 'saimesari@enbalsigorta.com',
   process.env.ADMIN_EMAIL_2 || 'enbal50@gmail.com'
 ];
 

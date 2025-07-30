@@ -7,15 +7,15 @@ const EMAIL_CONFIG = {
   port: 587,
   secure: false,
   auth: {
-    user: process.env.EMAIL_USER || 'your-email@gmail.com',
-    pass: process.env.EMAIL_PASS || 'your-app-password'
+    user: process.env.EMAIL_USER || 'enbal50@gmail.com',
+    pass: process.env.EMAIL_PASS || 'vzpuhqgflicyruyk'
   }
 };
 
 // Admin email adresleri - Environment variable olarak saklanabilir
 const ADMIN_EMAILS = [
-  process.env.ADMIN_EMAIL_1 || 'admin1@enbalsigorta.com',
-  process.env.ADMIN_EMAIL_2 || 'admin2@enbalsigorta.com'
+  process.env.ADMIN_EMAIL_1 || 'saimesari@enbalsigorta.com',
+  process.env.ADMIN_EMAIL_2 || 'enbal50@gmail.com'
 ];
 
 export async function POST(request: Request) {

@@ -62,7 +62,7 @@ export default function Error({
           </Link>
 
           <a
-            href="mailto:destek@enbalsigorta.com"
+            href="mailto:saimesari@enbalsigorta.com"
             className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition flex items-center justify-center"
           >
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
