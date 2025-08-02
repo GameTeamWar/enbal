@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { setDoc, doc, collection, query, where, getDocs } from 'firebase/firestore';
+import { setDoc, doc, collection, query, where, getDocs, updateDoc, doc as firestoreDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -226,6 +226,9 @@ export default function Register() {
       await setDoc(doc(db, 'users', userCredential.user.uid), userData);
       
       console.log('✅ Kullanıcı bilgileri Firestore\'a kaydedildi');
+
+      // ✅ YENİ: Telefon numarası ile geçmiş teklifleri bul ve bağla
+      await linkPreviousQuotes(userCredential.user.uid, cleanPhone);
       
       toast.success('🎉 Kayıt başarılı! Giriş sayfasına yönlendiriliyorsunuz...');
       
@@ -262,6 +265,71 @@ export default function Register() {
       toast.error(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ✅ YENİ: Geçmiş teklifleri telefon numarası ile eşleştir
+  const linkPreviousQuotes = async (userId: string, phoneNumber: string) => {
+    try {
+      console.log('🔍 Telefon numarası ile geçmiş teklifler aranıyor:', phoneNumber);
+      
+      // Aynı telefon numarasına sahip misafir tekliflerini bul
+      const quotesQuery = query(
+        collection(db, 'quotes'),
+        where('phone', '==', phoneNumber)
+      );
+      
+      const quotesSnapshot = await getDocs(quotesQuery);
+      let linkedCount = 0;
+      let updatedQuotes: string[] = [];
+      
+      // Her teklifin userId'sini güncelle
+      for (const quoteDoc of quotesSnapshot.docs) {
+        const quoteData = quoteDoc.data();
+        
+        // Eğer teklif zaten bir kullanıcıya bağlıysa, atlama
+        if (quoteData.userId && quoteData.userId !== 'null' && quoteData.userId !== null) {
+          console.log(`⏭️ Teklif ${quoteDoc.id} zaten kullanıcıya bağlı, atlıyor`);
+          continue;
+        }
+        
+        // Teklifi yeni kullanıcıya bağla
+        await updateDoc(firestoreDoc(db, 'quotes', quoteDoc.id), {
+          userId: userId,
+          userName: `${formData.name} ${formData.surname}`,
+          userStatus: 'registered',
+          linkedAt: new Date(),
+          isLinkedFromPrevious: true // Geçmişten bağlanan teklifler için işaret
+        });
+        
+        linkedCount++;
+        updatedQuotes.push(quoteDoc.id);
+        console.log(`✅ Teklif ${quoteDoc.id} kullanıcıya bağlandı`);
+      }
+      
+      if (linkedCount > 0) {
+        console.log(`🎯 Toplam ${linkedCount} geçmiş teklif hesabınıza bağlandı:`, updatedQuotes);
+        
+        // Kullanıcıya bildirim gönder
+        toast.success(`📋 ${linkedCount} geçmiş teklifiniz hesabınıza bağlandı! Tekliflerim sayfasında görüntüleyebilirsiniz.`, {
+          duration: 6000
+        });
+        
+        // Geçmiş teklifleri bağlama bilgisini kullanıcı profiline kaydet
+        await updateDoc(firestoreDoc(db, 'users', userId), {
+          linkedQuotesCount: linkedCount,
+          linkedQuotesAt: new Date(),
+          hasLinkedPreviousQuotes: true
+        });
+        
+      } else {
+        console.log('ℹ️ Bu telefon numarası ile geçmiş teklif bulunamadı');
+      }
+      
+    } catch (error) {
+      console.error('❌ Geçmiş teklif bağlama hatası:', error);
+      // Hata olsa bile kayıt işlemini durdurmuyoruz
+      toast.error('Geçmiş teklifler bağlanırken hata oluştu, ancak kayıt başarılı!');
     }
   };
 
