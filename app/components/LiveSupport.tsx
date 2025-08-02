@@ -17,6 +17,8 @@ export default function LiveSupport({ onClose, initialType = '' }: LiveSupportPr
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [useMyInfo, setUseMyInfo] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [userLoginStatus, setUserLoginStatus] = useState<'checking' | 'logged-in' | 'not-logged-in'>('checking');
   const [formData, setFormData] = useState({
     insuranceType: initialType,
     // Kişi bilgileri
@@ -32,6 +34,7 @@ export default function LiveSupport({ onClose, initialType = '' }: LiveSupportPr
     address: ''
   });
 
+  // ✅ Kullanıcı durumu kontrolü
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
       if (authUser) {
@@ -39,12 +42,34 @@ export default function LiveSupport({ onClose, initialType = '' }: LiveSupportPr
         if (userDoc.exists()) {
           const userData = userDoc.data();
           setUser({ ...userData, uid: authUser.uid });
+          setUserLoginStatus('logged-in');
         }
+      } else {
+        setUser(null);
+        setUserLoginStatus('not-logged-in');
+        // Kullanıcı giriş yapmamışsa modal göster
+        setShowLoginModal(true);
       }
     });
 
     return () => unsubscribe();
   }, []);
+
+  // ✅ Kayıt olmadan devam et
+  const handleContinueWithoutLogin = () => {
+    setShowLoginModal(false);
+    setUserLoginStatus('not-logged-in');
+    toast('📞 Kayıt olmadan devam ediyorsunuz. Teklif cevabınız telefonunuza bildirilecektir.', {
+      icon: 'ℹ️',
+      duration: 4000,
+    });
+  };
+
+  // ✅ Kayıt olmaya yönlendir
+  const handleGoToRegister = () => {
+    router.push('/register');
+    onClose();
+  };
 
   const fillMyInfo = () => {
     if (user && useMyInfo) {
@@ -88,6 +113,7 @@ export default function LiveSupport({ onClose, initialType = '' }: LiveSupportPr
         ...formData,
         userId: user?.uid || null,
         userName: user ? `${user.name} ${user.surname}` : 'Misafir',
+        userStatus: user ? 'registered' : 'guest',
         status: 'pending',
         createdAt: serverTimestamp(),
         isForSelf: useMyInfo,
@@ -112,7 +138,12 @@ export default function LiveSupport({ onClose, initialType = '' }: LiveSupportPr
         }),
       });
 
-      toast.success('Teklif talebiniz alındı! En kısa sürede size dönüş yapılacaktır.');
+      if (user) {
+        toast.success('✅ Teklif talebiniz alındı! Cevap geldiğinde bildirim alacaksınız.');
+      } else {
+        toast.success('📞 Teklif talebiniz alındı! En kısa sürede telefonunuzu arayacağız.');
+      }
+      
       onClose();
     } catch (error) {
       console.error('Teklif gönderim hatası:', error);
@@ -125,17 +156,135 @@ export default function LiveSupport({ onClose, initialType = '' }: LiveSupportPr
   const showVehicleFields = formData.insuranceType === 'Trafik' || formData.insuranceType === 'Kasko';
   const showPropertyFields = !showVehicleFields && formData.insuranceType !== '';
 
+  // ✅ Kullanıcı durumu kontrol modalı
+  if (showLoginModal && userLoginStatus === 'not-logged-in') {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-8 max-w-lg w-full">
+          <div className="text-center mb-6">
+            <div className="text-6xl mb-4">🔐</div>
+            <h3 className="text-2xl font-bold text-gray-800 mb-4">Daha İyi Hizmet İçin Kayıt Olun</h3>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+              <div className="text-blue-800">
+                <p className="font-semibold mb-3">🎯 Kayıt olmanız durumunda:</p>
+                <ul className="text-left space-y-2 text-sm">
+                  <li className="flex items-center">
+                    <span className="text-green-500 mr-2">✓</span>
+                    <span>Teklif cevabını <strong>anında bildirim</strong> olarak alabilirsiniz</span>
+                  </li>
+                  <li className="flex items-center">
+                    <span className="text-green-500 mr-2">✓</span>
+                    <span>Onaylamanız durumunda <strong>poliçenizi online</strong> alabilirsiniz</span>
+                  </li>
+                  <li className="flex items-center">
+                    <span className="text-green-500 mr-2">✓</span>
+                    <span>Tüm <strong>geçmiş tekliflerinizi</strong> takip edebilirsiniz</span>
+                  </li>
+                  <li className="flex items-center">
+                    <span className="text-green-500 mr-2">✓</span>
+                    <span>Belgelerinizi <strong>dijital olarak</strong> indirebilirsiniz</span>
+                  </li>
+                  <li className="flex items-center">
+                    <span className="text-green-500 mr-2">✓</span>
+                    <span>Kişisel bilgileriniz <strong>otomatik doldurulur</strong></span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <p className="text-gray-600">Kayıt olmak ister misiniz?</p>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={handleGoToRegister}
+              className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white py-4 px-6 rounded-lg font-semibold hover:opacity-90 transition flex items-center justify-center"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              ✅ Evet, Kayıt Olarak Devam Edeceğim
+            </button>
+            
+            <button
+              onClick={handleContinueWithoutLogin}
+              className="w-full bg-gray-500 text-white py-4 px-6 rounded-lg font-semibold hover:bg-gray-600 transition flex items-center justify-center"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              📞 Hayır, Kayıt Olmadan Devam Edeceğim
+            </button>
+            
+            <button
+              onClick={onClose}
+              className="w-full text-gray-600 py-2 px-6 rounded-lg hover:bg-gray-100 transition"
+            >
+              İptal
+            </button>
+          </div>
+          
+          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-yellow-600 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-yellow-800 font-medium text-sm">Not:</p>
+                <p className="text-yellow-700 text-sm">
+                  Kayıt olmadan devam ederseniz, teklif cevabı telefon ile bildirilecektir. 
+                  Online işlemler için kayıt olmanız gerekmektedir.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ Kullanıcı durumu kontrol ediliyorsa loading göster
+  if (userLoginStatus === 'checking') {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-8 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Kullanıcı durumu kontrol ediliyor...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl p-8 max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-2xl font-bold text-gray-800">Canlı Destek - Teklif Al</h3>
+          <h3 className="text-2xl font-bold text-gray-800">
+            {user ? 'Canlı Destek - Teklif Al' : 'Misafir Teklif Talebi'}
+          </h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
+
+        {/* ✅ Misafir kullanıcı için uyarı */}
+        {!user && (
+          <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-orange-600 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-orange-800 font-medium text-sm">📞 Misafir Kullanıcı</p>
+                <p className="text-orange-700 text-sm mt-1">
+                  Kayıt olmadığınız için teklif cevabı telefon ile bildirilecektir. 
+                  Online işlemler için kayıt olmanızı öneririz.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
@@ -397,7 +546,7 @@ export default function LiveSupport({ onClose, initialType = '' }: LiveSupportPr
             disabled={loading}
             className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50"
           >
-            {loading ? 'Gönderiliyor...' : 'Teklif İste'}
+            {loading ? 'Gönderiliyor...' : user ? 'Teklif İste' : 'Misafir Teklif İste (Telefon ile Bildirim)'}
           </button>
         </form>
       </div>
